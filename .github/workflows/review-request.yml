@@ -1,0 +1,74 @@
+name: Weekly Code Review Request
+
+on:
+  schedule:
+    - cron: '0 1 * * 1'  # 毎週月曜10:00 JST (UTC+9)
+  workflow_dispatch:  # 手動実行も可能
+
+jobs:
+  request-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get commit info
+        id: commit
+        run: |
+          echo "hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "message=$(git log -1 --pretty=%B | head -1)" >> $GITHUB_OUTPUT
+          echo "week=$(date +%V)" >> $GITHUB_OUTPUT
+
+      - name: Get changed files
+        id: changes
+        run: |
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          git diff --name-only HEAD~10 HEAD | head -20 >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Review Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const week = '${{ steps.commit.outputs.week }}';
+            const hash = '${{ steps.commit.outputs.hash }}';
+            const message = '${{ steps.commit.outputs.message }}';
+            const files = `${{ steps.changes.outputs.files }}`;
+            
+            const body = `
+            ## 📋 定期レビュー依頼（Week ${week}）
+            
+            **最新コミット**: \`${hash}\`  
+            **変更内容**: ${message}
+            
+            ### レビュー観点
+            
+            - [ ] **アーキテクチャ**: 設計書v2.2との整合性
+            - [ ] **パフォーマンス**: レスポンスタイム、クエリ最適化
+            - [ ] **セキュリティ**: 認証、SQL Injection対策、XSS対策
+            - [ ] **UI/UX**: Red Dot Award級の品質
+            - [ ] **コード品質**: 可読性、テストカバレッジ
+            - [ ] **データ整合性**: DB制約、トランザクション
+            
+            ### 主な変更ファイル
+            
+            \`\`\`
+            ${files}
+            \`\`\`
+            
+            ### レビュアー
+            
+            @Claude-Opus @Claude-Sonnet @Gemini-Pro
+            
+            ---
+            *自動生成: ${new Date().toISOString()}*
+            `;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🔍 Week ${week} Code Review`,
+              body: body,
+              labels: ['review', 'automated']
+            });

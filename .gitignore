@@ -1,0 +1,48 @@
+# 環境変数
+.env
+.env.local
+.env.production
+*.pem
+*.key
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Docker
+docker-compose.override.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+data/cache/*
+!data/cache/.gitkeep
+
+# Backup
+backups/
+*.sql.gz
+
+# Secrets
+config/secrets/
