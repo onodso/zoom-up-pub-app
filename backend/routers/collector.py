@@ -14,6 +14,9 @@ class NewsItem(BaseModel):
     snippet: str
     source: str
     published_at: str
+    score: Optional[int] = 0
+    reason: Optional[str] = None
+    buying_signal: Optional[bool] = False
 
 @router.get("/news", response_model=List[NewsItem])
 async def get_news(

@@ -14,12 +14,14 @@ CREATE TABLE municipalities (
     official_url TEXT,
     contact_phone VARCHAR(20),
     contact_email VARCHAR(100),
+    score_total DECIMAL(5,2) DEFAULT 0.0,  -- 最新スコア（キャッシュ）
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_municipalities_region ON municipalities(region);
 CREATE INDEX idx_municipalities_prefecture ON municipalities(prefecture);
+CREATE INDEX idx_municipalities_score ON municipalities(score_total DESC);
 
 -- スコアテーブル
 CREATE TABLE scores (

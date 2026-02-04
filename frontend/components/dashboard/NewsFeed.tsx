@@ -6,6 +6,9 @@ interface NewsItem {
     snippet: string;
     source: string;
     published_at: string;
+    score?: number;
+    reason?: string;
+    buying_signal?: boolean;
 }
 
 export default function NewsFeed() {
@@ -32,6 +35,12 @@ export default function NewsFeed() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const getScoreColor = (score: number) => {
+        if (score >= 80) return 'text-red-600 bg-red-50 border-red-200';
+        if (score >= 60) return 'text-orange-600 bg-orange-50 border-orange-200';
+        return 'text-gray-600 bg-gray-50 border-gray-200';
     };
 
     return (
@@ -76,17 +85,37 @@ export default function NewsFeed() {
                                 rel="noopener noreferrer"
                                 className="block group"
                             >
-                                <div className="flex items-start gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                                <div className="flex items-start gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
                                     <div className="flex-shrink-0 mt-1">
-                                        <div className="w-2 h-2 rounded-full bg-blue-400 mt-2"></div>
+                                        {item.score && item.score > 0 ? (
+                                            <div className={`flex flex-col items-center justify-center w-10 h-10 rounded-lg border ${getScoreColor(item.score)}`}>
+                                                <span className="text-xs font-bold">{item.score}</span>
+                                                <span className="text-[8px] uppercase">Score</span>
+                                            </div>
+                                        ) : (
+                                            <div className="w-2 h-2 rounded-full bg-blue-400 mt-2 ml-1"></div>
+                                        )}
                                     </div>
-                                    <div>
+                                    <div className="flex-1">
                                         <h3 className="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2">
                                             {item.title}
                                         </h3>
                                         <p className="text-xs text-gray-500 mt-1 line-clamp-2">
                                             {item.snippet}
                                         </p>
+
+                                        {/* AI Analysis Reason */}
+                                        {item.reason && (
+                                            <div className="mt-2 flex items-start gap-1.5 bg-blue-50/50 p-2 rounded-lg">
+                                                <svg className="w-3 h-3 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                <p className="text-xs text-blue-700 leading-tight">
+                                                    {item.reason}
+                                                </p>
+                                            </div>
+                                        )}
+
                                         <div className="flex items-center gap-2 mt-2">
                                             <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
                                                 {item.source}

@@ -1,0 +1,88 @@
+import os
+import csv
+import sys
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+# パス解決のためにbackendディレクトリをパスに追加
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../backend'))
+
+from models.municipality import Municipality, Base
+
+# DB接続設定 (Docker内からの実行を想定)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://zoom_admin:changeme@postgres:5432/zoom_dx_db")
+
+def get_region(prefecture):
+    regions = {
+        "北海道": "北海道",
+        "青森県": "東北", "岩手県": "東北", "宮城県": "東北", "秋田県": "東北", "山形県": "東北", "福島県": "東北",
+        "茨城県": "関東", "栃木県": "関東", "群馬県": "関東", "埼玉県": "関東", "千葉県": "関東", "東京都": "関東", "神奈川県": "関東",
+        "新潟県": "中部", "富山県": "中部", "石川県": "中部", "福井県": "中部", "山梨県": "中部", "長野県": "中部", "岐阜県": "中部", "静岡県": "中部", "愛知県": "中部",
+        "三重県": "近畿", "滋賀県": "近畿", "京都府": "近畿", "大阪府": "近畿", "兵庫県": "近畿", "奈良県": "近畿", "和歌山県": "近畿",
+        "鳥取県": "中国", "島根県": "中国", "岡山県": "中国", "広島県": "中国", "山口県": "中国",
+        "徳島県": "四国", "香川県": "四国", "愛媛県": "四国", "高知県": "四国",
+        "福岡県": "九州", "佐賀県": "九州", "長崎県": "九州", "熊本県": "九州", "大分県": "九州", "宮崎県": "九州", "鹿児島県": "九州", "沖縄県": "九州"
+    }
+    return regions.get(prefecture, "その他")
+
+def import_data():
+    engine = create_engine(DATABASE_URL)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    csv_path = "/app/data/localgov_master_integrated.csv"
+    
+    if not os.path.exists(csv_path):
+        print(f"File not found: {csv_path}")
+        # ローカル実行の場合のパスも試す
+        csv_path = "data/localgov_master_integrated.csv"
+        if not os.path.exists(csv_path):
+            print("CSV file not found in either /app/data or ./data")
+            return
+
+    print(f"Importing from {csv_path}...")
+    
+    try:
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            count = 0
+            for row in reader:
+                # 必須項目のチェック
+                if not row.get('lgcode') or not row.get('city'):
+                    continue
+
+                # 既存データの確認（重複排除）
+                existing = session.query(Municipality).filter_by(code=row['lgcode']).first()
+                if existing:
+                    # Update
+                    existing.population = int(float(row.get('population', 0) or 0))
+                    existing.households = int(float(row.get('households', 0) or 0))
+                    existing.official_url = row.get('url')
+                else:
+                    # Insert
+                    municipality = Municipality(
+                        code=row['lgcode'],
+                        prefecture=row['pref'],
+                        name=row['city'],
+                        region=get_region(row['pref']),
+                        population=int(float(row.get('population', 0) or 0)),
+                        households=int(float(row.get('households', 0) or 0)),
+                        official_url=row.get('url')
+                    )
+                    session.add(municipality)
+                
+                count += 1
+                if count % 100 == 0:
+                    print(f"Processed {count} records...")
+
+            session.commit()
+            print(f"Successfully processed {count} records!")
+
+    except Exception as e:
+        session.rollback()
+        print(f"Error: {e}")
+    finally:
+        session.close()
+
+if __name__ == "__main__":
+    import_data()

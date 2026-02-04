@@ -29,7 +29,15 @@ export default function LoginPage() {
                 router.push('/');
             } else {
                 const data = await res.json();
-                setError(data.detail || 'ログインに失敗しました');
+                // エラーメッセージがオブジェクトや配列の場合の対応
+                if (typeof data.detail === 'string') {
+                    setError(data.detail);
+                } else if (Array.isArray(data.detail)) {
+                    // Pydanticなどのバリデーションエラー
+                    setError(data.detail.map((e: any) => e.msg).join(', '));
+                } else {
+                    setError('ログインに失敗しました');
+                }
             }
         } catch (err) {
             setError('通信エラーが発生しました');

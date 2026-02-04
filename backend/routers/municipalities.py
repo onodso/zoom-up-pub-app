@@ -1,101 +1,67 @@
-"""
-自治体API
-"""
-from fastapi import APIRouter, Query, HTTPException
-from pydantic import BaseModel
-from typing import Optional
+from fastapi import APIRouter, Query, HTTPException, Depends
+from sqlalchemy.orm import Session
+from typing import List, Optional
 from datetime import datetime
 
-router = APIRouter(prefix='/api/municipalities', tags=['自治体'])
+from database import get_db
+from models.municipality import Municipality as DbMunicipality
+from pydantic import BaseModel
 
-
-class Municipality(BaseModel):
+class MunicipalityResponse(BaseModel):
     id: int
     code: str
     prefecture: str
     name: str
     region: str
-    population: int = 0
-    households: int = 0
+    population: int
+    households: int
     mayor_name: Optional[str] = None
     official_url: Optional[str] = None
 
+    class Config:
+        from_attributes = True
 
-class MunicipalityDetail(Municipality):
+class MunicipalityDetailResponse(MunicipalityResponse):
     contact_phone: Optional[str] = None
     contact_email: Optional[str] = None
     score_total: Optional[float] = None
     created_at: datetime
     updated_at: datetime
 
+router = APIRouter(prefix='/api/municipalities', tags=['自治体'])
 
-# 仮の自治体データ（本番ではDB接続）
-# パフォーマンス改善: datetime.now() を定数として1回だけ呼び出す
-_MOCK_TIMESTAMP = datetime.now()
-
-MOCK_MUNICIPALITIES = [
-    {
-        "id": 1, "code": "131130", "prefecture": "東京都", "name": "渋谷区",
-        "region": "関東", "population": 229000, "households": 132000,
-        "mayor_name": "長谷部健", "official_url": "https://www.city.shibuya.tokyo.jp",
-        "score_total": 85.5, "created_at": _MOCK_TIMESTAMP, "updated_at": _MOCK_TIMESTAMP
-    },
-    {
-        "id": 2, "code": "131181", "prefecture": "東京都", "name": "世田谷区",
-        "region": "関東", "population": 917000, "households": 472000,
-        "mayor_name": "保坂展人", "official_url": "https://www.city.setagaya.lg.jp",
-        "score_total": 78.2, "created_at": _MOCK_TIMESTAMP, "updated_at": _MOCK_TIMESTAMP
-    },
-    {
-        "id": 3, "code": "141003", "prefecture": "神奈川県", "name": "横浜市",
-        "region": "関東", "population": 3749000, "households": 1740000,
-        "mayor_name": "山中竹春", "official_url": "https://www.city.yokohama.lg.jp",
-        "score_total": 82.0, "created_at": _MOCK_TIMESTAMP, "updated_at": _MOCK_TIMESTAMP
-    },
-    {
-        "id": 4, "code": "231002", "prefecture": "愛知県", "name": "名古屋市",
-        "region": "中部", "population": 2320000, "households": 1100000,
-        "mayor_name": "河村たかし", "official_url": "https://www.city.nagoya.jp",
-        "score_total": 75.8, "created_at": _MOCK_TIMESTAMP, "updated_at": _MOCK_TIMESTAMP
-    },
-    {
-        "id": 5, "code": "271004", "prefecture": "大阪府", "name": "大阪市",
-        "region": "近畿", "population": 2750000, "households": 1460000,
-        "mayor_name": "横山英幸", "official_url": "https://www.city.osaka.lg.jp",
-        "score_total": 80.3, "created_at": _MOCK_TIMESTAMP, "updated_at": _MOCK_TIMESTAMP
-    },
-]
-
-
-@router.get('/', response_model=list[Municipality])
+@router.get('/', response_model=List[MunicipalityResponse])
 async def list_municipalities(
     region: Optional[str] = Query(None, description="地方名フィルター"),
     prefecture: Optional[str] = Query(None, description="都道府県名フィルター"),
     search: Optional[str] = Query(None, description="検索キーワード"),
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0)
+    limit: int = Query(50, ge=1, le=1000), # 全件表示したいニーズに対応してlimit上限UP
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
 ):
     """自治体一覧取得"""
-    result = MOCK_MUNICIPALITIES
+    query = db.query(DbMunicipality)
     
     if region:
-        result = [m for m in result if m["region"] == region]
+        query = query.filter(DbMunicipality.region == region)
     if prefecture:
-        result = [m for m in result if m["prefecture"] == prefecture]
+        query = query.filter(DbMunicipality.prefecture == prefecture)
     if search:
-        result = [m for m in result if search in m["name"] or search in m["prefecture"]]
+        query = query.filter(
+            (DbMunicipality.name.contains(search)) | 
+            (DbMunicipality.prefecture.contains(search))
+        )
     
-    return result[offset:offset + limit]
+    query = query.order_by(DbMunicipality.code)
+    return query.offset(offset).limit(limit).all()
 
-
-@router.get('/{code}', response_model=MunicipalityDetail)
-async def get_municipality(code: str):
+@router.get('/{code}', response_model=MunicipalityDetailResponse)
+async def get_municipality(code: str, db: Session = Depends(get_db)):
     """自治体詳細取得"""
-    for m in MOCK_MUNICIPALITIES:
-        if m["code"] == code:
-            return m
-    raise HTTPException(status_code=404, detail="自治体が見つかりません")
-
+    municipality = db.query(DbMunicipality).filter(DbMunicipality.code == code).first()
+    if not municipality:
+        raise HTTPException(status_code=404, detail="自治体が見つかりません")
+    return municipality
 
 @router.get('/regions/list')
 async def list_regions():
@@ -111,10 +77,10 @@ async def list_regions():
         {"id": "kyushu", "name": "九州"}
     ]
 
-
 @router.get('/prefectures/list')
-async def list_prefectures():
-    """都道府県一覧取得"""
+async def list_prefectures(db: Session = Depends(get_db)):
+    """都道府県一覧取得 (DBから取得するように変更も可能だが、固定リストの方が軽い)"""
+    # ... 固定リスト実装のまま ...
     prefectures = [
         "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
         "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
