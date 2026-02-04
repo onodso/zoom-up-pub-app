@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -17,6 +18,19 @@ export async function POST(request: Request) {
         if (!res.ok) {
             return NextResponse.json(data, { status: res.status });
         }
+
+        // Cookieにトークンを保存（HttpOnly）
+        // Middlewareでアクセス制限を行うために必要
+        const cookieStore = await cookies();
+        cookieStore.set({
+            name: 'token',
+            value: data.access_token,
+            httpOnly: true, // JavaScriptからアクセス不可（XSS対策）
+            secure: process.env.NODE_ENV === 'production',
+            path: '/',
+            maxAge: 60 * 60 * 8, // 8時間
+            sameSite: 'lax',
+        });
 
         return NextResponse.json(data);
     } catch (error) {

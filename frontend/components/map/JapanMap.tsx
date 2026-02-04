@@ -76,7 +76,7 @@ export default function JapanMap({ onPrefectureClick }: JapanMapProps) {
                                     backgroundColor: `rgb(${r}, ${g}, ${b})`,
                                 }}
                             >
-                                {score.toFixed(0)}
+                                {score?.toFixed(0) ?? '-'}
                             </button>
                         );
                     })}
@@ -112,7 +112,7 @@ export default function JapanMap({ onPrefectureClick }: JapanMapProps) {
                         {PREFECTURE_DATA.find(p => p.code === hoveredPrefecture)?.name}
                     </p>
                     <p className="text-sm text-gray-500">
-                        平均スコア: {scores[hoveredPrefecture]?.avg_score.toFixed(1) || '-'}
+                        平均スコア: {scores[hoveredPrefecture]?.avg_score?.toFixed(1) || '-'}
                     </p>
                     <p className="text-xs text-gray-400">
                         自治体数: {scores[hoveredPrefecture]?.municipality_count || '-'}

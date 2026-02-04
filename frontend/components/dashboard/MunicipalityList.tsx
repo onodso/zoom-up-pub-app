@@ -166,10 +166,10 @@ export default function MunicipalityList({ filters }: MunicipalityListProps) {
                                 </div>
                                 <div className="text-right">
                                     <div className={`text-2xl font-bold ${m.score_total >= 80 ? 'text-blue-600' :
-                                            m.score_total >= 60 ? 'text-green-600' :
-                                                m.score_total >= 40 ? 'text-yellow-600' : 'text-red-600'
+                                        m.score_total >= 60 ? 'text-green-600' :
+                                            m.score_total >= 40 ? 'text-yellow-600' : 'text-red-600'
                                         }`}>
-                                        {m.score_total.toFixed(1)}
+                                        {m.score_total?.toFixed(1) ?? '-'}
                                     </div>
                                     <p className="text-xs text-gray-400">スコア</p>
                                 </div>

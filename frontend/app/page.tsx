@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import NewsFeed from '@/components/dashboard/NewsFeed';
 
 interface Municipality {
     id: number;
@@ -132,8 +133,8 @@ export default function HomePage() {
                             key={region.id}
                             onClick={() => setSelectedRegion(region.id)}
                             className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${selectedRegion === region.id
-                                    ? 'bg-blue-500 text-white shadow-md'
-                                    : 'bg-white text-gray-600 hover:bg-gray-100'
+                                ? 'bg-blue-500 text-white shadow-md'
+                                : 'bg-white text-gray-600 hover:bg-gray-100'
                                 }`}
                             aria-pressed={selectedRegion === region.id}
                             aria-label={`${region.name}で絞り込み`}
@@ -197,7 +198,7 @@ export default function HomePage() {
                                                 </p>
                                             </div>
                                             <div className={`px-3 py-1 rounded-full text-sm font-semibold ${getScoreColor(m.score_total)}`}>
-                                                {m.score_total.toFixed(1)}
+                                                {m.score_total?.toFixed(1) ?? '-'}
                                             </div>
                                         </div>
                                     </div>
@@ -224,6 +225,9 @@ export default function HomePage() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* ニュースフィード */}
+                            <NewsFeed />
                         </div>
                     </div>
                 </div>

@@ -5,8 +5,11 @@
 import os
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
 
-# パス設定
+# .env読み込み
+load_dotenv(Path(__file__).parent.parent.parent / '.env')
+
 sys.path.append(str(Path(__file__).parent.parent.parent / 'backend'))
 
 try:

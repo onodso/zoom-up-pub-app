@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 # .envファイルを読み込む（親ディレクトリにある場合を想定）
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
-from routers import auth, municipalities, scores
+from routers import auth, municipalities, scores, collector
 
 app = FastAPI(
     title="Local Gov DX Intelligence API",
@@ -35,6 +35,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(municipalities.router)
 app.include_router(scores.router)
+app.include_router(collector.router)
 
 
 @app.get("/api/health")
