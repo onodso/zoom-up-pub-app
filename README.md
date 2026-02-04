@@ -2,7 +2,14 @@
 
 全国1,741自治体＋47都道府県教育委員会を対象としたZoom営業支援ダッシュボード「Local Gov DX Intelligence」
 
-## アーキテクチャ
+## 🚀 AWS Production Environment (Tokyo)
+- **Status**: Backend Services Running (Phase 1 Complete)
+- **Host IP**: `54.150.207.122`
+- **Dashboard**: Not yet deployed (Backend only)
+- **Swagger UI**: [http://54.150.207.122:8000/docs](http://54.150.207.122:8000/docs)
+- **SSH**: `ssh -i ~/.ssh/zoom-dx-prod.pem ubuntu@54.150.207.122`
+
+## Local Development
 
 - **Frontend**: Next.js 16 + React 19 + Tailwind CSS
 - **Backend**: FastAPI + PostgreSQL + Redis

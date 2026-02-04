@@ -53,7 +53,17 @@ Claude Codeによるコードレビューを受け、データベーススキー
 
 ---
 
-## 4. 🗓 次のアクション (Next Steps)
+## 4. ⚡️ AWS基盤構築 (By Genspark)
+
+Genspark (Lead Architect) により、本番環境となるAWS Lightsail基盤の構築が完了しました（詳細は `docs/genchan_aws_daily_report_2026-02-05.md` を参照）。
+
+- **Infrastructure**: AWS Lightsail (Tokyo Region, 2vCPU/2GB RAM)
+- **Services**: API, Postgres, Redis, Ollama, Node-RED が稼働中。
+- **Status**: バックエンドサービスは正常稼働しており、次フェーズでフロントエンドの統合を行う予定。
+
+---
+
+## 5. 🗓 次のアクション (Next Steps)
 
 **Project Phase**: Phase 4 - Production Deployment
 
