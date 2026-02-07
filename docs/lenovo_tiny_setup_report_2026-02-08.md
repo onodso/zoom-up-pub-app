@@ -107,6 +107,37 @@ curl http://100.107.246.40:8000/docs
                                                         └────────────────────────────┘
 ```
 
+### Mermaid Diagram
+
+```mermaid
+graph LR
+    subgraph Mac [Mac (開発環境)]
+        FE[Next.js Frontend<br>localhost:3000]
+        Dev[開発ツール<br>Antigravity / Claude Code]
+    end
+
+    subgraph Network [Tailscale VPN (100.107.246.40)]
+        FE -- API Request --> API
+        Dev -- SSH / Docker --> Lenovo
+    end
+
+    subgraph Lenovo [Lenovo Tiny (AI Engine)]
+        subgraph Docker [Docker Containers]
+            API[FastAPI :8000]
+            DB[(Postgres :5432)]
+            Redis[(Redis :6379)]
+            OllamaD[Ollama :11434]
+            NodeRED[Node-RED :1880]
+        end
+        OllamaW[Ollama (Windows Native)<br>Llama3.2:1b]
+    end
+
+    API --> DB
+    API --> Redis
+    API --> OllamaD
+    NodeRED -.-> API
+```
+
 ---
 
 ## 📈 成果とメリット
