@@ -2,12 +2,22 @@
 
 全国1,741自治体＋47都道府県教育委員会を対象としたZoom営業支援ダッシュボード「Local Gov DX Intelligence」
 
-## 🚀 AWS Production Environment (Tokyo)
-- **Status**: Backend Services Running (Phase 1 Complete)
+## 🚀 Production Environment
+
+### AWS Lightsail (Tokyo) - Frontend
+- **Status**: Backend Services Running
 - **Host IP**: `54.150.207.122`
-- **Dashboard**: Not yet deployed (Backend only)
 - **Swagger UI**: [http://54.150.207.122:8000/docs](http://54.150.207.122:8000/docs)
-- **SSH**: `ssh -i ~/.ssh/zoom-dx-prod.pem ubuntu@54.150.207.122`
+- **Role**: Lightweight Frontend + Thin API
+- **Cost**: $10/month (1,500円/月)
+
+### Lenovo Tiny (On-Premise) - AI Engine
+- **Status**: Setup Pending
+- **Role**: AI Processing (Ollama) + Database + Crawling
+- **Cost**: Electricity only (~500円/月)
+- **Setup Guide**: [docs/lenovo_tiny_setup_guide.md](docs/lenovo_tiny_setup_guide.md)
+
+**Total Monthly Cost**: ~2,000円 (予算5,000円以内)
 
 ## Local Development
 
