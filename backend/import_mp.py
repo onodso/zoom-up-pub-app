@@ -49,7 +49,30 @@ def import_data():
                     existing.population = int(float(row.get('population', 0) or 0))
                     existing.households = int(float(row.get('households', 0) or 0))
                     existing.official_url = row.get('url')
+                    # 地理情報の取り込み
+                    if row.get('lat'):
+                        try:
+                            existing.latitude = float(row['lat'])
+                        except (ValueError, TypeError):
+                            pass
+                    if row.get('lng'):
+                        try:
+                            existing.longitude = float(row['lng'])
+                        except (ValueError, TypeError):
+                            pass
                 else:
+                    # lat/lng の安全な変換
+                    lat_val = None
+                    lng_val = None
+                    try:
+                        lat_val = float(row['lat']) if row.get('lat') else None
+                    except (ValueError, TypeError):
+                        pass
+                    try:
+                        lng_val = float(row['lng']) if row.get('lng') else None
+                    except (ValueError, TypeError):
+                        pass
+
                     municipality = Municipality(
                         code=row['lgcode'],
                         prefecture=row['pref'],
@@ -57,7 +80,9 @@ def import_data():
                         region=get_region(row['pref']),
                         population=int(float(row.get('population', 0) or 0)),
                         households=int(float(row.get('households', 0) or 0)),
-                        official_url=row.get('url')
+                        official_url=row.get('url'),
+                        latitude=lat_val,
+                        longitude=lng_val,
                     )
                     session.add(municipality)
                 

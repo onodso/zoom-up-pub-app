@@ -1,93 +1,94 @@
 from fastapi import APIRouter, Query, HTTPException, Depends
-from sqlalchemy.orm import Session
 from typing import List, Optional
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from pydantic import BaseModel
 from datetime import datetime
 
-from database import get_db
-from models.municipality import Municipality as DbMunicipality
-from pydantic import BaseModel
+from config import settings
+
+def get_db_conn():
+    conn = psycopg2.connect(
+        host=settings.DB_HOST,
+        port=settings.DB_PORT,
+        database=settings.DB_NAME,
+        user=settings.DB_USER,
+        password=settings.DB_PASSWORD
+    )
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 class MunicipalityResponse(BaseModel):
-    id: int
-    code: str
+    city_code: str
     prefecture: str
-    name: str
-    region: str
-    population: int
-    households: int
-    mayor_name: Optional[str] = None
+    city_name: str
+    city_type: Optional[str] = None
+    region: Optional[str] = None
+    population: Optional[int] = 0
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     official_url: Optional[str] = None
-
-    class Config:
-        from_attributes = True
+    # dx_status: Optional[dict] = None
 
 class MunicipalityDetailResponse(MunicipalityResponse):
-    contact_phone: Optional[str] = None
-    contact_email: Optional[str] = None
-    score_total: Optional[float] = None
-    created_at: datetime
-    updated_at: datetime
+    dx_status: Optional[dict] = None
+    updated_at: Optional[datetime] = None
 
-router = APIRouter(prefix='/api/municipalities', tags=['自治体'])
+router = APIRouter(prefix='/api/municipalities', tags=['Municipalities'])
 
 @router.get('/', response_model=List[MunicipalityResponse])
 async def list_municipalities(
-    region: Optional[str] = Query(None, description="地方名フィルター"),
-    prefecture: Optional[str] = Query(None, description="都道府県名フィルター"),
-    search: Optional[str] = Query(None, description="検索キーワード"),
-    limit: int = Query(50, ge=1, le=1000), # 全件表示したいニーズに対応してlimit上限UP
+    region: Optional[str] = Query(None, description="Region Filter"),
+    prefecture: Optional[str] = Query(None, description="Prefecture Filter"),
+    search: Optional[str] = Query(None, description="Search Keyword"),
+    limit: int = Query(50, ge=1, le=2000), 
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    conn = Depends(get_db_conn)
 ):
-    """自治体一覧取得"""
-    query = db.query(DbMunicipality)
+    """List municipalities with filters"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    query = "SELECT city_code, prefecture, city_name, city_type, region, population, NULL as latitude, NULL as longitude, official_url FROM municipalities WHERE 1=1"
+    params = []
     
     if region:
-        query = query.filter(DbMunicipality.region == region)
+        query += " AND region = %s"
+        params.append(region)
     if prefecture:
-        query = query.filter(DbMunicipality.prefecture == prefecture)
+        query += " AND prefecture = %s"
+        params.append(prefecture)
     if search:
-        query = query.filter(
-            (DbMunicipality.name.contains(search)) | 
-            (DbMunicipality.prefecture.contains(search))
-        )
+        query += " AND (city_name LIKE %s OR prefecture LIKE %s)"
+        params.append(f"%{search}%")
+        params.append(f"%{search}%")
+        
+    query += " ORDER BY city_code LIMIT %s OFFSET %s"
+    params.extend([limit, offset])
     
-    query = query.order_by(DbMunicipality.code)
-    return query.offset(offset).limit(limit).all()
+    cur.execute(query, params)
+    return cur.fetchall()
 
-@router.get('/{code}', response_model=MunicipalityDetailResponse)
-async def get_municipality(code: str, db: Session = Depends(get_db)):
-    """自治体詳細取得"""
-    municipality = db.query(DbMunicipality).filter(DbMunicipality.code == code).first()
-    if not municipality:
-        raise HTTPException(status_code=404, detail="自治体が見つかりません")
-    return municipality
+@router.get('/{city_code}', response_model=MunicipalityDetailResponse)
+async def get_municipality(city_code: str, conn = Depends(get_db_conn)):
+    """Get municipality details"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT * FROM municipalities WHERE city_code = %s", (city_code,))
+    result = cur.fetchone()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Municipality not found")
+        
+    return result
 
-@router.get('/regions/list')
+@router.get('/lists/regions')
 async def list_regions():
-    """地方一覧取得"""
     return [
-        {"id": "hokkaido", "name": "北海道"},
-        {"id": "tohoku", "name": "東北"},
-        {"id": "kanto", "name": "関東"},
-        {"id": "chubu", "name": "中部"},
-        {"id": "kinki", "name": "近畿"},
-        {"id": "chugoku", "name": "中国"},
-        {"id": "shikoku", "name": "四国"},
-        {"id": "kyushu", "name": "九州"}
+        {"id": "hokkaido", "name": "北海道/東北", "prefs": ["北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県"]},
+        {"id": "kanto", "name": "関東", "prefs": ["茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県"]},
+        {"id": "chubu", "name": "中部", "prefs": ["新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県"]},
+        {"id": "kinki", "name": "近畿", "prefs": ["三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県"]},
+        {"id": "chugoku_shikoku", "name": "中国/四国", "prefs": ["鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県"]},
+        {"id": "kyushu", "name": "九州/沖縄", "prefs": ["福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"]}
     ]
-
-@router.get('/prefectures/list')
-async def list_prefectures(db: Session = Depends(get_db)):
-    """都道府県一覧取得 (DBから取得するように変更も可能だが、固定リストの方が軽い)"""
-    # ... 固定リスト実装のまま ...
-    prefectures = [
-        "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
-        "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
-        "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
-        "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
-        "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
-        "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
-        "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
-    ]
-    return [{"id": i+1, "name": p} for i, p in enumerate(prefectures)]

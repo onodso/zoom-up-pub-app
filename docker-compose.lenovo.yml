@@ -44,18 +44,28 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: zoom-dx-api
+    env_file:
+      - .env
     environment:
+      # Database config (for both database.py and config.py compatibility)
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-zoom_admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-zoom_dx_db}
+      # Redis
       REDIS_URL: redis://redis:6379/0
+      # Auth
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      # External APIs
       GOOGLE_SEARCH_API_KEY: ${GOOGLE_SEARCH_API_KEY}
       GOOGLE_SEARCH_ENGINE_ID: ${GOOGLE_SEARCH_ENGINE_ID}
+      ESTAT_APP_ID: ${ESTAT_APP_ID}
+      # Ollama
       OLLAMA_HOST: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3}
+      OLLAMA_URL: http://ollama:11434
+      # Misc
       ZOOM_CHAT_WEBHOOK_URL: ${ZOOM_CHAT_WEBHOOK_URL:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
       NODE_ENV: production

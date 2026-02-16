@@ -1,4 +1,4 @@
 """
 Routers package
 """
-from . import auth, municipalities, scores
+from . import auth, municipalities, scores, proposals

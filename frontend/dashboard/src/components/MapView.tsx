@@ -1,8 +1,10 @@
 // 地図表示コンポーネント - Mapbox GL JS
 // ドリルダウンのレベルに応じてマーカーを描画
 import { useRef, useEffect, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import * as topojson from 'topojson-client';
+import type { Topology, GeometryCollection } from 'topojson-specification';
 import type {
     ViewLevel,
     RegionData,
@@ -16,7 +18,10 @@ import {
 
 // Mapboxの公開トークン（制限付き・無料枠）
 // 本番では環境変数から取得
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
+// CARTOタイルを使用する場合でもMapbox GL JSはトークンを要求するため、
+// トークンがない場合はダミートークンを設定
+const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN || 'pk.dummy_token_for_carto_tiles';
+maplibregl.accessToken = mapboxToken;
 
 interface Props {
     viewLevel: ViewLevel;
@@ -77,8 +82,8 @@ export default function MapView({
     onMunicipalityClick,
 }: Props) {
     const mapContainer = useRef<HTMLDivElement>(null);
-    const map = useRef<mapboxgl.Map | null>(null);
-    const markersRef = useRef<mapboxgl.Marker[]>([]);
+    const map = useRef<maplibregl.Map | null>(null);
+    const markersRef = useRef<maplibregl.Marker[]>([]);
     const [mapReady, setMapReady] = useState(false);
 
     // Mapbox初期化
@@ -86,29 +91,101 @@ export default function MapView({
         if (!mapContainer.current) return;
 
         // トークンがない場合、OpenStreetMapスタイルを使用
-        const useMapbox = !!mapboxgl.accessToken;
+        const useMapbox = !!maplibregl.accessToken && maplibregl.accessToken !== 'pk.dummy_token_for_carto_tiles';
 
-        map.current = new mapboxgl.Map({
+        // CARTOタイルを直接定義したカスタムスタイル（Mapbox認証不要）
+        const cartoStyle = {
+            version: 8,
+            sources: {
+                'carto-dark': {
+                    type: 'raster',
+                    tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],
+                    tileSize: 256,
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                }
+            },
+            layers: [{
+                id: 'carto-dark-layer',
+                type: 'raster',
+                source: 'carto-dark',
+                minzoom: 0,
+                maxzoom: 22
+            }]
+        };
+
+        map.current = new maplibregl.Map({
             container: mapContainer.current,
             style: useMapbox
                 ? 'mapbox://styles/mapbox/dark-v11'
-                : 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+                : cartoStyle as any,
             center: [137.0, 38.0],
             zoom: 4.5,
             attributionControl: false,
         });
 
-        map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
-        map.current.addControl(new mapboxgl.AttributionControl({ compact: true }));
+        map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
+        map.current.addControl(new maplibregl.AttributionControl({ compact: true }));
 
         map.current.on('load', () => {
             setMapReady(true);
+            // 境界線データを読み込み
+            loadBoundaries();
         });
 
         return () => {
             map.current?.remove();
         };
     }, []);
+
+    // 境界線データの読み込みと追加
+    const loadBoundaries = async () => {
+        if (!map.current) return;
+
+        try {
+            // 都道府県境界（TopoJSON from dataofjapan/land）
+            const response = await fetch('https://cdn.jsdelivr.net/gh/dataofjapan/land@master/japan.topojson');
+            const topo = await response.json() as Topology;
+
+            // TopoJSONをGeoJSONに変換
+            const geo = topojson.feature(
+                topo,
+                topo.objects.japan as GeometryCollection
+            );
+
+            // 都道府県境界レイヤー追加
+            map.current!.addSource('prefecture-boundaries', {
+                type: 'geojson',
+                data: geo as GeoJSON.FeatureCollection,
+            });
+
+            // 境界線（青色）
+            map.current!.addLayer({
+                id: 'prefecture-borders',
+                type: 'line',
+                source: 'prefecture-boundaries',
+                paint: {
+                    'line-color': '#58a6ff',
+                    'line-width': 1.5,
+                    'line-opacity': 0.6,
+                },
+            });
+
+            // 塗りつぶし（薄い青、透明度高め）
+            map.current!.addLayer({
+                id: 'prefecture-fill',
+                type: 'fill',
+                source: 'prefecture-boundaries',
+                paint: {
+                    'fill-color': '#1f6feb',
+                    'fill-opacity': 0.05,
+                },
+            }, 'prefecture-borders'); // 境界線の下に配置
+
+            console.log('✅ 都道府県境界線データ読み込み完了');
+        } catch (err) {
+            console.error('境界線データ読み込みエラー:', err);
+        }
+    };
 
     // マーカーをクリア
     const clearMarkers = () => {
@@ -139,12 +216,21 @@ export default function MapView({
 
             el.addEventListener('click', () => onRegionClick(region.region));
 
-            const marker = new mapboxgl.Marker({ element: el })
+            const marker = new maplibregl.Marker({ element: el })
                 .setLngLat([center.lng, center.lat])
                 .addTo(map.current!);
 
             markersRef.current.push(marker);
         });
+
+        // 全国ビュー: 都道府県境界を表示
+        if (map.current!.getLayer('prefecture-borders')) {
+            map.current!.setLayoutProperty('prefecture-borders', 'visibility', 'visible');
+            map.current!.setPaintProperty('prefecture-borders', 'line-opacity', 0.6);
+        }
+        if (map.current!.getLayer('prefecture-fill')) {
+            map.current!.setLayoutProperty('prefecture-fill', 'visibility', 'visible');
+        }
     }, [mapReady, viewLevel, regions, onRegionClick]);
 
     // Level 2: 都道府県マーカー
@@ -177,12 +263,21 @@ export default function MapView({
 
             el.addEventListener('click', () => onPrefectureClick(pref.prefecture));
 
-            const marker = new mapboxgl.Marker({ element: el })
+            const marker = new maplibregl.Marker({ element: el })
                 .setLngLat([center.lng, center.lat])
                 .addTo(map.current!);
 
             markersRef.current.push(marker);
         });
+
+        // 地方ビュー: 都道府県境界を表示
+        if (map.current!.getLayer('prefecture-borders')) {
+            map.current!.setLayoutProperty('prefecture-borders', 'visibility', 'visible');
+            map.current!.setPaintProperty('prefecture-borders', 'line-opacity', 0.6);
+        }
+        if (map.current!.getLayer('prefecture-fill')) {
+            map.current!.setLayoutProperty('prefecture-fill', 'visibility', 'visible');
+        }
     }, [mapReady, viewLevel, prefectures, selectedRegion, onPrefectureClick]);
 
     // Level 3: 自治体マーカー
@@ -198,7 +293,7 @@ export default function MapView({
             // 自治体の座標範囲からバウンディングボックスを計算
             const lats = municipalities.filter(m => m.latitude).map(m => m.latitude);
             const lngs = municipalities.filter(m => m.longitude).map(m => m.longitude);
-            const bounds = new mapboxgl.LngLatBounds(
+            const bounds = new maplibregl.LngLatBounds(
                 [Math.min(...lngs) - 0.1, Math.min(...lats) - 0.1],
                 [Math.max(...lngs) + 0.1, Math.max(...lats) + 0.1]
             );
@@ -222,7 +317,7 @@ export default function MapView({
             el.style.height = `${size}px`;
 
             // ツールチップ
-            const popup = new mapboxgl.Popup({ offset: 15, closeButton: false })
+            const popup = new maplibregl.Popup({ offset: 15, closeButton: false })
                 .setHTML(`
           <div class="muni-popup">
             <strong>${escapeHtml(muni.city_name)}</strong>
@@ -234,7 +329,7 @@ export default function MapView({
 
             el.addEventListener('click', () => onMunicipalityClick(muni.city_code));
 
-            const marker = new mapboxgl.Marker({ element: el })
+            const marker = new maplibregl.Marker({ element: el })
                 .setLngLat([muni.longitude, muni.latitude])
                 .setPopup(popup)
                 .addTo(map.current!);
@@ -245,6 +340,15 @@ export default function MapView({
 
             markersRef.current.push(marker);
         });
+
+        // 都道府県ビュー: 都道府県境界を薄く表示
+        if (map.current!.getLayer('prefecture-borders')) {
+            map.current!.setPaintProperty('prefecture-borders', 'line-opacity', 0.4);
+            map.current!.setLayoutProperty('prefecture-borders', 'visibility', 'visible');
+        }
+        if (map.current!.getLayer('prefecture-fill')) {
+            map.current!.setLayoutProperty('prefecture-fill', 'visibility', 'visible');
+        }
     }, [mapReady, viewLevel, municipalities, onMunicipalityClick]);
 
     return (

@@ -1,4 +1,5 @@
 import os
+from urllib.parse import quote_plus
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
@@ -12,7 +13,8 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "zoom_dx_db")
 # Docker内部で動く場合は "postgres"、ローカル実行の場合は "localhost"
 # 環境変数で制御することを推奨
 
-SQLALCHEMY_DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+# URL-encode password to handle special characters
+SQLALCHEMY_DATABASE_URL = f"postgresql://{POSTGRES_USER}:{quote_plus(POSTGRES_PASSWORD)}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

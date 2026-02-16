@@ -59,6 +59,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: zoom-dx-api
+    env_file:
+      - .env
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -68,6 +70,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GOOGLE_SEARCH_API_KEY: ${GOOGLE_SEARCH_API_KEY}
+      GOOGLE_SEARCH_ENGINE_ID: ${GOOGLE_SEARCH_ENGINE_ID}
       OLLAMA_HOST: http://ollama:11434
       ZOOM_CHAT_WEBHOOK_URL: ${ZOOM_CHAT_WEBHOOK_URL:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}

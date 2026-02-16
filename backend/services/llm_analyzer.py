@@ -48,7 +48,7 @@ Output ONLY a JSON object with the following format (no markdown, no explanation
                 "format": "json" # Llama3 recent versions support JSON mode
             }
             
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(f"{self.ollama_host}/api/generate", json=payload)
                 if response.status_code != 200:
                     logger.error(f"Ollama Error: {response.text}")
@@ -66,7 +66,9 @@ Output ONLY a JSON object with the following format (no markdown, no explanation
                     return self._fallback_result()
 
         except Exception as e:
-            logger.error(f"LLM Connection Error: {e}", exc_info=True)
+            logger.error(f"LLM Connection Error: {type(e).__name__}: {str(e)}")
+            logger.error(f"Request URL: {self.ollama_host}/api/generate")
+            logger.error(f"Model: {self.model}")
             return self._fallback_result()
 
     def _fallback_result(self) -> Dict[str, Any]:

@@ -1,86 +1,167 @@
 """
-スコアAPI
+Decision Readiness Score API
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Depends
+from typing import List, Optional
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel
-from typing import Optional
+from datetime import datetime
 
-router = APIRouter(prefix='/api/scores', tags=['スコア'])
+# Use the config to get connection parameters
+# Or use a dependency if you have one. For now, creating a simple dependency.
+from config import settings
 
+def get_db_conn():
+    conn = psycopg2.connect(
+        host=settings.DB_HOST,
+        port=settings.DB_PORT,
+        database=settings.DB_NAME,
+        user=settings.DB_USER,
+        password=settings.DB_PASSWORD
+    )
+    try:
+        yield conn
+    finally:
+        conn.close()
 
-class PrefectureScore(BaseModel):
-    prefecture_code: str
-    prefecture_name: str
-    avg_score: float
-    municipality_count: int
+router = APIRouter(prefix='/api/scores', tags=['Scores'])
 
+class ScoreDetails(BaseModel):
+    structural: dict
+    leadership: dict
+    peer: dict
+    feasibility: dict
+    accountability: dict
 
-class MunicipalityScore(BaseModel):
-    municipality_code: str
-    municipality_name: str
+class DecisionScoreResponse(BaseModel):
+    city_code: str
+    city_name: str
     prefecture: str
-    score_total: float
-    score_dx_maturity: float
-    score_online_procedures: float
-    score_budget_match: float
-    score_news_sentiment: float
+    total_score: int
+    confidence_level: str
+    scored_at: datetime
+    # 5 Pillars
+    structural_pressure: int
+    leadership_commitment: int
+    peer_pressure: int
+    feasibility: int
+    accountability: int
+    
+    evidence_urls: Optional[List[str]] = []
+    signal_keywords: Optional[List[str]] = []
+    
+    # Optional breakdown if stored
+    # breakdown: Optional[ScoreDetails]
 
+@router.get('/{city_code}', response_model=DecisionScoreResponse)
+async def get_score(city_code: str, conn = Depends(get_db_conn)):
+    """
+    Get the latest Decision Readiness Score for a municipality.
+    """
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    query = """
+        SELECT 
+            m.city_code, m.city_name, m.prefecture,
+            s.total_score, s.confidence_level, s.scored_at,
+            s.structural_pressure, s.leadership_commitment,
+            s.peer_pressure, s.feasibility, s.accountability,
+            s.evidence_urls, s.signal_keywords
+        FROM decision_readiness_scores s
+        JOIN municipalities m ON s.city_code = m.city_code
+        WHERE m.city_code = %s
+        ORDER BY s.scored_at DESC
+        LIMIT 1
+    """
+    
+    cur.execute(query, (city_code,))
+    result = cur.fetchone()
+    
+    if not result:
+        # Check if municipality exists
+        cur.execute("SELECT city_name FROM municipalities WHERE city_code = %s", (city_code,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Municipality not found")
+        raise HTTPException(status_code=404, detail="Score not yet calculated for this municipality")
+        
+    return result
 
-# 都道府県別スコア（仮データ）
-PREFECTURE_SCORES = {
-    "13": {"code": "13", "name": "東京都", "avg_score": 82.5, "count": 62},
-    "14": {"code": "14", "name": "神奈川県", "avg_score": 78.3, "count": 33},
-    "23": {"code": "23", "name": "愛知県", "avg_score": 75.2, "count": 54},
-    "27": {"code": "27", "name": "大阪府", "avg_score": 76.8, "count": 43},
-    "01": {"code": "01", "name": "北海道", "avg_score": 65.4, "count": 179},
-    "40": {"code": "40", "name": "福岡県", "avg_score": 72.1, "count": 60},
-}
+@router.get('/ranking/{prefecture}', response_model=List[DecisionScoreResponse])
+async def get_prefecture_ranking(prefecture: str, conn = Depends(get_db_conn)):
+    """
+    Get scores for all municipalities in a prefecture.
+    """
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    query = """
+        SELECT 
+            m.city_code, m.city_name, m.prefecture,
+            COALESCE(s.total_score, 0) as total_score,
+            COALESCE(s.confidence_level, 'unknown') as confidence_level,
+            COALESCE(s.scored_at, NOW()) as scored_at,
+            COALESCE(s.structural_pressure, 0) as structural_pressure,
+            COALESCE(s.leadership_commitment, 0) as leadership_commitment,
+            COALESCE(s.peer_pressure, 0) as peer_pressure,
+            COALESCE(s.feasibility, 0) as feasibility,
+            COALESCE(s.accountability, 0) as accountability
+        FROM municipalities m
+        LEFT JOIN decision_readiness_scores s ON m.city_code = s.city_code
+        WHERE m.prefecture = %s
+        ORDER BY s.total_score DESC NULLS LAST
+    """
+    
+    cur.execute(query, (prefecture,))
+    results = cur.fetchall()
+    
+    return results
 
+@router.get('/map/all')
+async def get_map_data(conn = Depends(get_db_conn)):
+    """
+    Get lightweight data for all municipalities for map visualization.
+    Returns: list of {city_code, lat, lon, score, confidence}
+    """
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    # Query for latest score (lat/lon optional for now)
+    query = """
+        SELECT DISTINCT ON (m.city_code)
+            m.city_code,
+            m.prefecture,
+            m.city_name,
+            NULL::double precision as latitude,
+            NULL::double precision as longitude,
+            COALESCE(s.total_score, 0) as total_score,
+            COALESCE(s.confidence_level, 'unknown') as confidence
+        FROM municipalities m
+        LEFT JOIN decision_readiness_scores s ON m.city_code = s.city_code
+        ORDER BY m.city_code, s.scored_at DESC NULLS LAST
+    """
+    
+    cur.execute(query)
+    results = cur.fetchall()
+    return results
 
-@router.get('/by-prefecture')
-async def get_scores_by_prefecture():
-    """都道府県別スコア取得（地図表示用）"""
-    return {
-        code: {
-            "prefecture_code": data["code"],
-            "prefecture_name": data["name"],
-            "avg_score": data["avg_score"],
-            "municipality_count": data["count"]
-        }
-        for code, data in PREFECTURE_SCORES.items()
-    }
+# Batch Trigger
+from typing import List
+from pydantic import BaseModel
 
+class BatchRequest(BaseModel):
+    city_codes: Optional[List[str]] = None
 
-@router.get('/ranking')
-async def get_score_ranking(
-    region: Optional[str] = Query(None, description="地方名フィルター"),
-    limit: int = Query(20, ge=1, le=100)
-):
-    """スコアランキング取得"""
-    # 仮データ
-    ranking = [
-        {"rank": 1, "code": "131130", "name": "渋谷区", "prefecture": "東京都", "score": 85.5},
-        {"rank": 2, "code": "131016", "name": "千代田区", "prefecture": "東京都", "score": 84.2},
-        {"rank": 3, "code": "141003", "name": "横浜市", "prefecture": "神奈川県", "score": 82.0},
-        {"rank": 4, "code": "271004", "name": "大阪市", "prefecture": "大阪府", "score": 80.3},
-        {"rank": 5, "code": "131181", "name": "世田谷区", "prefecture": "東京都", "score": 78.2},
-    ]
-    return ranking[:limit]
-
-
-@router.get('/stats')
-async def get_score_stats():
-    """スコア統計情報取得"""
-    return {
-        "total_municipalities": 1741,
-        "average_score": 68.5,
-        "max_score": 92.3,
-        "min_score": 32.1,
-        "score_distribution": {
-            "80-100": 156,
-            "60-80": 523,
-            "40-60": 789,
-            "20-40": 245,
-            "0-20": 28
-        }
-    }
+@router.post('/batch', status_code=202)
+async def trigger_batch_scoring(req: BatchRequest, conn = Depends(get_db_conn)):
+    """
+    Trigger the scoring batch process.
+    In production, this should launch a background task (Celery/RQ).
+    Here we use subprocess for simplicity in MVP.
+    """
+    import subprocess
+    import sys
+    
+    # Launch detached process
+    # Note: simple Popen might be killed if main process dies, but sufficient for demo.
+    cmd = [sys.executable, "backend/scripts/nightly_scoring.py"]
+    subprocess.Popen(cmd)
+    
+    return {"status": "accepted", "message": "Batch scoring initiated in background"}
