@@ -248,65 +248,88 @@ docker exec -it zoom-dx-postgres psql -U zoom_admin -d zoom_dx_db -c "SELECT COU
 
 ---
 
-## 🌐 Phase 6: Cloudflare Tunnel設定
+## 🌐 Phase 6: Tailscale VPN設定
 
-### 6-1. Cloudflaredインストール
+### 6-1. Tailscaleインストール（Lenovo Tiny側）
 ```bash
-# Cloudflare Tunnelクライアントインストール
-curl -fsSL https://pkg.cloudflare.com/cloudflared-stable-linux-amd64.deb -o cloudflared.deb
-sudo dpkg -i cloudflared.deb
+# Tailscale公式リポジトリ追加
+curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noexpand.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list
+
+# Tailscaleインストール
+sudo apt update
+sudo apt install tailscale -y
 
 # バージョン確認
-cloudflared --version
+tailscale version
 ```
 
-### 6-2. Cloudflareアカウント認証
+### 6-2. Tailscale起動・認証
 ```bash
-# ブラウザで認証（ローカルでブラウザが開く）
-cloudflared tunnel login
+# Tailscale起動（ブラウザで認証画面が開く）
+sudo tailscale up
+
+# 表示されたURLをMacのブラウザで開いて認証
+# Googleアカウントでログイン推奨（無料）
 ```
 
-### 6-3. Tunnel作成
+### 6-3. Lenovo TinyのIPアドレス確認
 ```bash
-# 新しいトンネル作成
-cloudflared tunnel create zoom-dx-backend
+# TailscaleネットワークでのIPアドレス確認
+tailscale ip -4
 
-# 認証情報確認
-ls ~/.cloudflared/
+# 例: 100.x.x.x のようなIPが表示される
 ```
 
-### 6-4. DNS設定
+### 6-4. AWS Lightsail側にもTailscaleインストール
 ```bash
-# サブドメインをトンネルにルーティング
-cloudflared tunnel route dns zoom-dx-backend api.your-domain.com
+# SSHでAWS Lightsailに接続
+ssh -i ~/.ssh/zoom-dx-prod.pem ubuntu@54.150.207.122
+
+# Lenovo Tinyと同じ手順でインストール
+curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noexpand.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list
+sudo apt update
+sudo apt install tailscale -y
+
+# 起動・認証（同じアカウントでログイン）
+sudo tailscale up
 ```
 
-### 6-5. 設定ファイル作成
+### 6-5. 接続確認
 ```bash
-# トンネル設定ファイル作成
-nano ~/.cloudflared/config.yml
+# AWS LightsailからLenovo TinyのAPIにアクセス
+curl http://100.x.x.x:8000/health
+
+# レスポンス例
+# {"status":"ok","version":"1.0.0"}
+
+# Lenovo TinyからAWSへもping確認
+ping -c 3 100.y.y.y
 ```
 
-**config.yml の内容**:
-```yaml
-tunnel: zoom-dx-backend
-credentials-file: /home/ubuntu/.cloudflared/<TUNNEL_ID>.json
-
-ingress:
-  - hostname: api.your-domain.com
-    service: http://localhost:8000
-  - service: http_status:404
-```
-
-### 6-6. Tunnel起動（systemdサービス化）
+### 6-6. Mac（開発マシン）にもTailscaleインストール（オプション）
 ```bash
-# サービスとしてインストール
-sudo cloudflared service install
-sudo systemctl start cloudflared
-sudo systemctl enable cloudflared
+# Macでも同じネットワークに参加可能
+# https://tailscale.com/download/mac からダウンロード
+# またはHomebrewで:
+brew install tailscale
 
-# 動作確認
-sudo systemctl status cloudflared
+# 起動
+sudo tailscaled install-system-daemon
+tailscale up
+```
+
+### 6-7. Tailscale設定のベストプラクティス
+```bash
+# Lenovo Tinyに固定的な名前を付ける
+sudo tailscale set --hostname lenovo-ai-engine
+
+# AWS Lightsailにも名前を付ける
+sudo tailscale set --hostname aws-frontend
+
+# 名前でアクセス可能に
+# 例: curl http://lenovo-ai-engine:8000/health
 ```
 
 ---
