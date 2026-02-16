@@ -14,14 +14,10 @@ import type {
 import {
     getScoreColor,
     REGION_CENTERS,
+    fetchPrefectures,
 } from '../api/mapApi';
 
-// Mapboxの公開トークン（制限付き・無料枠）
-// 本番では環境変数から取得
-// CARTOタイルを使用する場合でもMapbox GL JSはトークンを要求するため、
-// トークンがない場合はダミートークンを設定
-const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN || 'pk.dummy_token_for_carto_tiles';
-maplibregl.accessToken = mapboxToken;
+// MapLibre GL JS: トークン不要、CARTOタイルを使用
 
 interface Props {
     viewLevel: ViewLevel;
@@ -86,14 +82,14 @@ export default function MapView({
     const markersRef = useRef<maplibregl.Marker[]>([]);
     const [mapReady, setMapReady] = useState(false);
 
-    // Mapbox初期化
+    // 全都道府県スコア（コロプレスマップ用）
+    const [allPrefScores, setAllPrefScores] = useState<Record<string, number>>({});
+
+    // MapLibre初期化
     useEffect(() => {
         if (!mapContainer.current) return;
 
-        // トークンがない場合、OpenStreetMapスタイルを使用
-        const useMapbox = !!maplibregl.accessToken && maplibregl.accessToken !== 'pk.dummy_token_for_carto_tiles';
-
-        // CARTOタイルを直接定義したカスタムスタイル（Mapbox認証不要）
+        // CARTOタイルを直接定義したカスタムスタイル（認証不要）
         const cartoStyle = {
             version: 8,
             sources: {
@@ -115,9 +111,7 @@ export default function MapView({
 
         map.current = new maplibregl.Map({
             container: mapContainer.current,
-            style: useMapbox
-                ? 'mapbox://styles/mapbox/dark-v11'
-                : cartoStyle as any,
+            style: cartoStyle as any,
             center: [137.0, 38.0],
             zoom: 4.5,
             attributionControl: false,
@@ -130,12 +124,29 @@ export default function MapView({
             setMapReady(true);
             // 境界線データを読み込み
             loadBoundaries();
+            // 全都道府県スコアを取得（コロプレス用）
+            loadAllPrefectureScores();
         });
 
         return () => {
             map.current?.remove();
         };
     }, []);
+
+    // 全都道府県スコアを取得（コロプレス用）
+    const loadAllPrefectureScores = async () => {
+        try {
+            const allPrefs = await fetchPrefectures();
+            const scores: Record<string, number> = {};
+            allPrefs.forEach(p => {
+                scores[p.prefecture] = p.avg_score;
+            });
+            setAllPrefScores(scores);
+            console.log('✅ 全都道府県スコア取得完了:', Object.keys(scores).length, '件');
+        } catch (err) {
+            console.error('都道府県スコア取得エラー:', err);
+        }
+    };
 
     // 境界線データの読み込みと追加
     const loadBoundaries = async () => {
@@ -170,7 +181,7 @@ export default function MapView({
                 },
             });
 
-            // 塗りつぶし（薄い青、透明度高め）
+            // 塗りつぶし（初期は透明、スコアデータが来たらコロプレス表示）
             map.current!.addLayer({
                 id: 'prefecture-fill',
                 type: 'fill',
@@ -186,6 +197,29 @@ export default function MapView({
             console.error('境界線データ読み込みエラー:', err);
         }
     };
+
+    // コロプレスマップ: 都道府県スコアに基づく色分け
+    useEffect(() => {
+        if (!mapReady || !map.current || Object.keys(allPrefScores).length === 0) return;
+        if (!map.current.getLayer('prefecture-fill')) return;
+
+        // MapLibreのmatch式を構築: ['match', ['get', 'nam_ja'], '北海道', '#色', ...]
+        const matchExpr: any[] = ['match', ['get', 'nam_ja']];
+        Object.entries(allPrefScores).forEach(([prefName, score]) => {
+            matchExpr.push(prefName, getScoreColor(score));
+        });
+        matchExpr.push('#333333'); // デフォルト色（マッチしない場合）
+
+        map.current.setPaintProperty('prefecture-fill', 'fill-color', matchExpr);
+        map.current.setPaintProperty('prefecture-fill', 'fill-opacity', 0.35);
+
+        // 境界線もスコアに応じた色に（さらにリッチな表現）
+        map.current.setPaintProperty('prefecture-borders', 'line-color', matchExpr);
+        map.current.setPaintProperty('prefecture-borders', 'line-width', 2);
+        map.current.setPaintProperty('prefecture-borders', 'line-opacity', 0.8);
+
+        console.log('✅ コロプレスマップ適用完了');
+    }, [mapReady, allPrefScores]);
 
     // マーカーをクリア
     const clearMarkers = () => {
@@ -223,13 +257,14 @@ export default function MapView({
             markersRef.current.push(marker);
         });
 
-        // 全国ビュー: 都道府県境界を表示
+        // 全国ビュー: 都道府県境界とコロプレスを鮮やかに表示
         if (map.current!.getLayer('prefecture-borders')) {
             map.current!.setLayoutProperty('prefecture-borders', 'visibility', 'visible');
-            map.current!.setPaintProperty('prefecture-borders', 'line-opacity', 0.6);
+            map.current!.setPaintProperty('prefecture-borders', 'line-opacity', 0.8);
         }
         if (map.current!.getLayer('prefecture-fill')) {
             map.current!.setLayoutProperty('prefecture-fill', 'visibility', 'visible');
+            map.current!.setPaintProperty('prefecture-fill', 'fill-opacity', 0.35);
         }
     }, [mapReady, viewLevel, regions, onRegionClick]);
 
@@ -270,13 +305,14 @@ export default function MapView({
             markersRef.current.push(marker);
         });
 
-        // 地方ビュー: 都道府県境界を表示
+        // 地方ビュー: コロプレスをより鮮やかに表示
         if (map.current!.getLayer('prefecture-borders')) {
             map.current!.setLayoutProperty('prefecture-borders', 'visibility', 'visible');
-            map.current!.setPaintProperty('prefecture-borders', 'line-opacity', 0.6);
+            map.current!.setPaintProperty('prefecture-borders', 'line-opacity', 0.9);
         }
         if (map.current!.getLayer('prefecture-fill')) {
             map.current!.setLayoutProperty('prefecture-fill', 'visibility', 'visible');
+            map.current!.setPaintProperty('prefecture-fill', 'fill-opacity', 0.45);
         }
     }, [mapReady, viewLevel, prefectures, selectedRegion, onPrefectureClick]);
 
@@ -341,13 +377,14 @@ export default function MapView({
             markersRef.current.push(marker);
         });
 
-        // 都道府県ビュー: 都道府県境界を薄く表示
+        // 都道府県ビュー: コロプレスを薄く表示（マーカーを目立たせる）
         if (map.current!.getLayer('prefecture-borders')) {
-            map.current!.setPaintProperty('prefecture-borders', 'line-opacity', 0.4);
+            map.current!.setPaintProperty('prefecture-borders', 'line-opacity', 0.5);
             map.current!.setLayoutProperty('prefecture-borders', 'visibility', 'visible');
         }
         if (map.current!.getLayer('prefecture-fill')) {
             map.current!.setLayoutProperty('prefecture-fill', 'visibility', 'visible');
+            map.current!.setPaintProperty('prefecture-fill', 'fill-opacity', 0.2);
         }
     }, [mapReady, viewLevel, municipalities, onMunicipalityClick]);
 
