@@ -84,6 +84,8 @@ export default function MapView({
 
     // 全都道府県スコア（コロプレスマップ用）
     const [allPrefScores, setAllPrefScores] = useState<Record<string, number>>({});
+    // 自治体境界GeoJSON（コロプレスマップ用）
+    const [municipalityGeoJson, setMunicipalityGeoJson] = useState<any>(null);
 
     // MapLibre初期化
     useEffect(() => {
@@ -126,6 +128,8 @@ export default function MapView({
             loadBoundaries();
             // 全都道府県スコアを取得（コロプレス用）
             loadAllPrefectureScores();
+            // 自治体境界データを読み込み（コロプレス用）
+            loadMunicipalityBoundaries();
         });
 
         return () => {
@@ -145,6 +149,20 @@ export default function MapView({
             console.log('✅ 全都道府県スコア取得完了:', Object.keys(scores).length, '件');
         } catch (err) {
             console.error('都道府県スコア取得エラー:', err);
+        }
+    };
+
+    // 自治体境界GeoJSONを読み込み（コロプレス用）
+    const loadMunicipalityBoundaries = async () => {
+        try {
+            const response = await fetch(
+                'https://raw.githubusercontent.com/smartnews-smri/japan-topography/main/data/municipality/geojson/s0001/N03-21_210101.json'
+            );
+            const geojson = await response.json();
+            setMunicipalityGeoJson(geojson);
+            console.log('✅ 自治体境界データ読み込み完了:', geojson.features.length, '件');
+        } catch (err) {
+            console.error('自治体境界データ読み込みエラー:', err);
         }
     };
 
@@ -198,6 +216,49 @@ export default function MapView({
         }
     };
 
+    // 自治体境界レイヤーを追加（コロプレス用）
+    const addMunicipalityBoundaryLayers = () => {
+        if (!map.current || !municipalityGeoJson) return;
+        if (map.current.getSource('municipality-boundaries')) return;
+
+        // 自治体境界ソース追加
+        map.current.addSource('municipality-boundaries', {
+            type: 'geojson',
+            data: municipalityGeoJson,
+        });
+
+        // 塗りつぶしレイヤー（初期は非表示）
+        map.current.addLayer({
+            id: 'municipality-fill',
+            type: 'fill',
+            source: 'municipality-boundaries',
+            paint: {
+                'fill-color': '#1f6feb',
+                'fill-opacity': 0,
+            },
+        });
+
+        // 境界線レイヤー（初期は非表示）
+        map.current.addLayer({
+            id: 'municipality-borders',
+            type: 'line',
+            source: 'municipality-boundaries',
+            paint: {
+                'line-color': '#58a6ff',
+                'line-width': 0.5,
+                'line-opacity': 0,
+            },
+        });
+
+        console.log('✅ 自治体境界レイヤー追加完了');
+    };
+
+    // 自治体境界GeoJSONが読み込まれたらレイヤーを追加
+    useEffect(() => {
+        if (!mapReady || !municipalityGeoJson) return;
+        addMunicipalityBoundaryLayers();
+    }, [mapReady, municipalityGeoJson]);
+
     // コロプレスマップ: 都道府県スコアに基づく色分け
     useEffect(() => {
         if (!mapReady || !map.current || Object.keys(allPrefScores).length === 0) return;
@@ -220,6 +281,24 @@ export default function MapView({
 
         console.log('✅ コロプレスマップ適用完了');
     }, [mapReady, allPrefScores]);
+
+    // コロプレスマップ: 自治体スコアに基づく色分け
+    useEffect(() => {
+        if (!mapReady || !map.current || municipalities.length === 0) return;
+        if (!map.current.getLayer('municipality-fill')) return;
+
+        // 自治体のcity_codeとスコアのマッピング
+        const matchExpr: any[] = ['match', ['get', 'N03_007']];
+        municipalities.forEach(muni => {
+            const score = muni.total_score || 0;
+            matchExpr.push(muni.city_code, getScoreColor(score));
+        });
+        matchExpr.push('#333333'); // デフォルト色（マッチしない場合）
+
+        map.current.setPaintProperty('municipality-fill', 'fill-color', matchExpr);
+
+        console.log('✅ 自治体コロプレスマップ適用完了:', municipalities.length, '件');
+    }, [mapReady, municipalities]);
 
     // マーカーをクリア
     const clearMarkers = () => {
@@ -265,6 +344,14 @@ export default function MapView({
         if (map.current!.getLayer('prefecture-fill')) {
             map.current!.setLayoutProperty('prefecture-fill', 'visibility', 'visible');
             map.current!.setPaintProperty('prefecture-fill', 'fill-opacity', 0.35);
+        }
+
+        // 自治体境界を非表示
+        if (map.current!.getLayer('municipality-borders')) {
+            map.current!.setLayoutProperty('municipality-borders', 'visibility', 'none');
+        }
+        if (map.current!.getLayer('municipality-fill')) {
+            map.current!.setLayoutProperty('municipality-fill', 'visibility', 'none');
         }
     }, [mapReady, viewLevel, regions, onRegionClick]);
 
@@ -314,9 +401,17 @@ export default function MapView({
             map.current!.setLayoutProperty('prefecture-fill', 'visibility', 'visible');
             map.current!.setPaintProperty('prefecture-fill', 'fill-opacity', 0.45);
         }
+
+        // 自治体境界を非表示
+        if (map.current!.getLayer('municipality-borders')) {
+            map.current!.setLayoutProperty('municipality-borders', 'visibility', 'none');
+        }
+        if (map.current!.getLayer('municipality-fill')) {
+            map.current!.setLayoutProperty('municipality-fill', 'visibility', 'none');
+        }
     }, [mapReady, viewLevel, prefectures, selectedRegion, onPrefectureClick]);
 
-    // Level 3: 自治体マーカー
+    // Level 3: 自治体マーカー + 自治体コロプレス
     useEffect(() => {
         if (!mapReady || viewLevel !== 'prefecture' || !map.current) return;
         clearMarkers();
@@ -377,14 +472,24 @@ export default function MapView({
             markersRef.current.push(marker);
         });
 
-        // 都道府県ビュー: コロプレスを薄く表示（マーカーを目立たせる）
+        // 都道府県ビュー: 都道府県コロプレスを薄く、自治体コロプレスを鮮やかに表示
         if (map.current!.getLayer('prefecture-borders')) {
-            map.current!.setPaintProperty('prefecture-borders', 'line-opacity', 0.5);
+            map.current!.setPaintProperty('prefecture-borders', 'line-opacity', 0.3);
             map.current!.setLayoutProperty('prefecture-borders', 'visibility', 'visible');
         }
         if (map.current!.getLayer('prefecture-fill')) {
             map.current!.setLayoutProperty('prefecture-fill', 'visibility', 'visible');
-            map.current!.setPaintProperty('prefecture-fill', 'fill-opacity', 0.2);
+            map.current!.setPaintProperty('prefecture-fill', 'fill-opacity', 0.1);
+        }
+
+        // 自治体境界を表示
+        if (map.current!.getLayer('municipality-borders')) {
+            map.current!.setLayoutProperty('municipality-borders', 'visibility', 'visible');
+            map.current!.setPaintProperty('municipality-borders', 'line-opacity', 0.6);
+        }
+        if (map.current!.getLayer('municipality-fill')) {
+            map.current!.setLayoutProperty('municipality-fill', 'visibility', 'visible');
+            map.current!.setPaintProperty('municipality-fill', 'fill-opacity', 0.5);
         }
     }, [mapReady, viewLevel, municipalities, onMunicipalityClick]);
 
