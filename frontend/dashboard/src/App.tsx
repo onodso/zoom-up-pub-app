@@ -124,6 +124,26 @@ function App() {
     setSidePanelOpen(false);
   }, [handlePrefectureClick]);
 
+  // 戻るボタンハンドラー
+  const handleBack = useCallback(() => {
+    if (viewLevel === 'municipality') {
+      // 自治体詳細 → 都道府県ビュー
+      setSidePanelOpen(false);
+      setViewLevel('prefecture');
+      setSelectedMunicipality(null);
+    } else if (viewLevel === 'prefecture') {
+      // 都道府県ビュー → 地方ビュー
+      if (selectedRegion) {
+        handleRegionClick(selectedRegion);
+      }
+      setSelectedPrefecture(null);
+      setMunicipalities([]);
+    } else if (viewLevel === 'region') {
+      // 地方ビュー → 全国ビュー
+      handleNavigateToNational();
+    }
+  }, [viewLevel, selectedRegion, handleRegionClick, handleNavigateToNational]);
+
   return (
     <div className="app">
       {/* ヘッダー */}
@@ -168,9 +188,11 @@ function App() {
             prefectures={prefectures}
             municipalities={municipalities}
             selectedRegion={selectedRegion}
+            selectedPrefecture={selectedPrefecture}
             onRegionClick={handleRegionClick}
             onPrefectureClick={handlePrefectureClick}
             onMunicipalityClick={handleMunicipalityClick}
+            onBack={handleBack}
           />
         </div>
 
