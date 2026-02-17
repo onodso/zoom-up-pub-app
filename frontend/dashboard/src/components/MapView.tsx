@@ -297,6 +297,11 @@ export default function MapView({
 
         map.current.setPaintProperty('municipality-fill', 'fill-color', matchExpr);
 
+        // 境界線もスコアに応じた色に
+        if (map.current.getLayer('municipality-borders')) {
+            map.current.setPaintProperty('municipality-borders', 'line-color', matchExpr);
+        }
+
         console.log('✅ 自治体コロプレスマップ適用完了:', municipalities.length, '件');
     }, [mapReady, municipalities]);
 
