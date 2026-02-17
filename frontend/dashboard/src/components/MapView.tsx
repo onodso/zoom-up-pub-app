@@ -30,36 +30,6 @@ interface Props {
     onMunicipalityClick: (cityCode: string) => void;
 }
 
-// 都道府県の中心座標（概算）
-const PREFECTURE_CENTERS: Record<string, { lat: number; lng: number }> = {
-    '北海道': { lat: 43.06, lng: 141.35 },
-    '青森県': { lat: 40.82, lng: 140.74 }, '岩手県': { lat: 39.70, lng: 141.15 },
-    '宮城県': { lat: 38.27, lng: 140.87 }, '秋田県': { lat: 39.72, lng: 140.10 },
-    '山形県': { lat: 38.24, lng: 140.34 }, '福島県': { lat: 37.75, lng: 140.47 },
-    '茨城県': { lat: 36.34, lng: 140.45 }, '栃木県': { lat: 36.57, lng: 139.88 },
-    '群馬県': { lat: 36.39, lng: 139.06 }, '埼玉県': { lat: 35.86, lng: 139.65 },
-    '千葉県': { lat: 35.61, lng: 140.12 }, '東京都': { lat: 35.68, lng: 139.69 },
-    '神奈川県': { lat: 35.45, lng: 139.64 },
-    '新潟県': { lat: 37.90, lng: 139.02 }, '富山県': { lat: 36.70, lng: 137.21 },
-    '石川県': { lat: 36.59, lng: 136.63 }, '福井県': { lat: 36.07, lng: 136.22 },
-    '山梨県': { lat: 35.66, lng: 138.57 }, '長野県': { lat: 36.23, lng: 138.18 },
-    '岐阜県': { lat: 35.39, lng: 136.72 }, '静岡県': { lat: 34.98, lng: 138.38 },
-    '愛知県': { lat: 35.18, lng: 136.91 },
-    '三重県': { lat: 34.73, lng: 136.51 }, '滋賀県': { lat: 35.00, lng: 135.87 },
-    '京都府': { lat: 35.02, lng: 135.76 }, '大阪府': { lat: 34.69, lng: 135.52 },
-    '兵庫県': { lat: 34.69, lng: 135.18 }, '奈良県': { lat: 34.69, lng: 135.83 },
-    '和歌山県': { lat: 34.23, lng: 135.17 },
-    '鳥取県': { lat: 35.50, lng: 134.24 }, '島根県': { lat: 35.47, lng: 133.05 },
-    '岡山県': { lat: 34.66, lng: 133.93 }, '広島県': { lat: 34.40, lng: 132.46 },
-    '山口県': { lat: 34.19, lng: 131.47 },
-    '徳島県': { lat: 34.07, lng: 134.56 }, '香川県': { lat: 34.34, lng: 134.04 },
-    '愛媛県': { lat: 33.84, lng: 132.77 }, '高知県': { lat: 33.56, lng: 133.53 },
-    '福岡県': { lat: 33.61, lng: 130.42 }, '佐賀県': { lat: 33.25, lng: 130.30 },
-    '長崎県': { lat: 32.75, lng: 129.87 }, '熊本県': { lat: 32.79, lng: 130.74 },
-    '大分県': { lat: 33.24, lng: 131.61 }, '宮崎県': { lat: 31.91, lng: 131.42 },
-    '鹿児島県': { lat: 31.56, lng: 130.56 }, '沖縄県': { lat: 26.34, lng: 127.80 },
-};
-
 // XSSを防止するHTMLエスケープ関数
 function escapeHtml(text: string): string {
     const div = document.createElement('div');
@@ -211,6 +181,29 @@ export default function MapView({
                 },
             }, 'prefecture-borders'); // 境界線の下に配置
 
+            // 都道府県名ラベルレイヤー（常に表示）
+            map.current!.addLayer({
+                id: 'prefecture-labels',
+                type: 'symbol',
+                source: 'prefecture-boundaries',
+                layout: {
+                    'text-field': ['get', 'nam_ja'],
+                    'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+                    'text-size': 14,
+                    'text-anchor': 'center',
+                    'text-offset': [0, 0],
+                    'text-allow-overlap': false,
+                    'text-optional': true,
+                    'visibility': 'none', // 初期は非表示、ビューレベルで制御
+                },
+                paint: {
+                    'text-color': '#ffffff',
+                    'text-halo-color': '#000000',
+                    'text-halo-width': 2,
+                    'text-opacity': 0.9,
+                },
+            });
+
             console.log('✅ 都道府県境界線データ読み込み完了');
         } catch (err) {
             console.error('境界線データ読み込みエラー:', err);
@@ -248,6 +241,29 @@ export default function MapView({
                 'line-color': '#58a6ff',
                 'line-width': 0.5,
                 'line-opacity': 0,
+            },
+        });
+
+        // 自治体名ラベルレイヤー（人口5万人以上の自治体のみ表示）
+        map.current.addLayer({
+            id: 'municipality-labels',
+            type: 'symbol',
+            source: 'municipality-boundaries',
+            layout: {
+                'text-field': ['get', 'N03_004'], // 市区町村名
+                'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+                'text-size': 12,
+                'text-anchor': 'center',
+                'text-offset': [0, 0],
+                'text-allow-overlap': false,
+                'text-optional': true,
+                'visibility': 'none', // 初期は非表示、ビューレベルで制御
+            },
+            paint: {
+                'text-color': '#ffffff',
+                'text-halo-color': '#000000',
+                'text-halo-width': 2,
+                'text-opacity': 0.85,
             },
         });
 
@@ -514,9 +530,17 @@ export default function MapView({
         if (map.current!.getLayer('municipality-fill')) {
             map.current!.setLayoutProperty('municipality-fill', 'visibility', 'none');
         }
+
+        // ラベルを非表示
+        if (map.current!.getLayer('prefecture-labels')) {
+            map.current!.setLayoutProperty('prefecture-labels', 'visibility', 'none');
+        }
+        if (map.current!.getLayer('municipality-labels')) {
+            map.current!.setLayoutProperty('municipality-labels', 'visibility', 'none');
+        }
     }, [mapReady, viewLevel, regions, onRegionClick]);
 
-    // Level 2: 都道府県マーカー
+    // Level 2: 都道府県ビュー（マーカーなし、ラベルのみ）
     useEffect(() => {
         if (!mapReady || viewLevel !== 'region' || !map.current || !selectedRegion) return;
         clearMarkers();
@@ -530,28 +554,6 @@ export default function MapView({
                 duration: 1500
             });
         }
-
-        prefectures.forEach(pref => {
-            const center = PREFECTURE_CENTERS[pref.prefecture];
-            if (!center) return;
-
-            const el = document.createElement('div');
-            el.className = 'prefecture-marker';
-            el.style.background = getScoreColor(pref.avg_score || 0);
-            el.innerHTML = `
-        <div class="marker-label">${escapeHtml(pref.prefecture)}</div>
-        <div class="marker-score">${pref.avg_score || '-'}</div>
-        <div class="marker-count">${pref.municipality_count}市区町村</div>
-      `;
-
-            el.addEventListener('click', () => onPrefectureClick(pref.prefecture));
-
-            const marker = new maplibregl.Marker({ element: el })
-                .setLngLat([center.lng, center.lat])
-                .addTo(map.current!);
-
-            markersRef.current.push(marker);
-        });
 
         // 地方ビュー: コロプレスをより鮮やかに表示
         if (map.current!.getLayer('prefecture-borders')) {
@@ -570,68 +572,35 @@ export default function MapView({
         if (map.current!.getLayer('municipality-fill')) {
             map.current!.setLayoutProperty('municipality-fill', 'visibility', 'none');
         }
+
+        // 都道府県ラベルを表示
+        if (map.current!.getLayer('prefecture-labels')) {
+            map.current!.setLayoutProperty('prefecture-labels', 'visibility', 'visible');
+        }
+
+        // 自治体ラベルを非表示
+        if (map.current!.getLayer('municipality-labels')) {
+            map.current!.setLayoutProperty('municipality-labels', 'visibility', 'none');
+        }
     }, [mapReady, viewLevel, prefectures, selectedRegion, onPrefectureClick]);
 
-    // Level 3: 自治体マーカー + 自治体コロプレス
+    // Level 3: 自治体ビュー（マーカーなし、ラベルのみ）
     useEffect(() => {
         if (!mapReady || viewLevel !== 'prefecture' || !map.current) return;
         clearMarkers();
 
         if (municipalities.length === 0) return;
 
-        // 都道府県にズーム - 最初の自治体の座標を基準
-        const firstMuni = municipalities.find(m => m.latitude && m.longitude);
-        if (firstMuni) {
-            // 自治体の座標範囲からバウンディングボックスを計算
-            const lats = municipalities.filter(m => m.latitude).map(m => m.latitude);
-            const lngs = municipalities.filter(m => m.longitude).map(m => m.longitude);
+        // 都道府県にズーム - 自治体の座標範囲からバウンディングボックスを計算
+        const lats = municipalities.filter(m => m.latitude).map(m => m.latitude);
+        const lngs = municipalities.filter(m => m.longitude).map(m => m.longitude);
+        if (lats.length > 0 && lngs.length > 0) {
             const bounds = new maplibregl.LngLatBounds(
                 [Math.min(...lngs) - 0.1, Math.min(...lats) - 0.1],
                 [Math.max(...lngs) + 0.1, Math.max(...lats) + 0.1]
             );
             map.current.fitBounds(bounds, { padding: 50, duration: 1500 });
         }
-
-        municipalities.forEach(muni => {
-            if (!muni.latitude || !muni.longitude) return;
-
-            const el = document.createElement('div');
-            el.className = 'municipality-marker';
-            const color = getScoreColor(muni.total_score || 0);
-            el.style.background = color;
-            el.style.borderColor = color;
-
-            // 人口に応じたサイズ
-            const pop = muni.population || 10000;
-            // 最小12pxでモバイルでもタッチ可能に
-            const size = Math.max(12, Math.min(28, Math.log10(pop) * 5));
-            el.style.width = `${size}px`;
-            el.style.height = `${size}px`;
-
-            // ツールチップ
-            const popup = new maplibregl.Popup({ offset: 15, closeButton: false })
-                .setHTML(`
-          <div class="muni-popup">
-            <strong>${escapeHtml(muni.city_name)}</strong>
-            <div>スコア: <b>${muni.total_score}</b></div>
-            <div>人口: ${(muni.population || 0).toLocaleString()}</div>
-            <div class="popup-hint">クリックで詳細</div>
-          </div>
-        `);
-
-            el.addEventListener('click', () => onMunicipalityClick(muni.city_code));
-
-            const marker = new maplibregl.Marker({ element: el })
-                .setLngLat([muni.longitude, muni.latitude])
-                .setPopup(popup)
-                .addTo(map.current!);
-
-            // ホバーでポップアップ表示（toggleの代わりにopen/closeで安定動作）
-            el.addEventListener('mouseenter', () => { if (!marker.getPopup()?.isOpen()) marker.togglePopup(); });
-            el.addEventListener('mouseleave', () => { if (marker.getPopup()?.isOpen()) marker.togglePopup(); });
-
-            markersRef.current.push(marker);
-        });
 
         // 都道府県ビュー: 都道府県コロプレスを薄く、自治体コロプレスを鮮やかに表示
         if (map.current!.getLayer('prefecture-borders')) {
@@ -643,6 +612,11 @@ export default function MapView({
             map.current!.setPaintProperty('prefecture-fill', 'fill-opacity', 0.1);
         }
 
+        // 都道府県ラベルを非表示
+        if (map.current!.getLayer('prefecture-labels')) {
+            map.current!.setLayoutProperty('prefecture-labels', 'visibility', 'none');
+        }
+
         // 自治体境界を表示
         if (map.current!.getLayer('municipality-borders')) {
             map.current!.setLayoutProperty('municipality-borders', 'visibility', 'visible');
@@ -651,6 +625,11 @@ export default function MapView({
         if (map.current!.getLayer('municipality-fill')) {
             map.current!.setLayoutProperty('municipality-fill', 'visibility', 'visible');
             map.current!.setPaintProperty('municipality-fill', 'fill-opacity', 0.5);
+        }
+
+        // 自治体ラベルを表示
+        if (map.current!.getLayer('municipality-labels')) {
+            map.current!.setLayoutProperty('municipality-labels', 'visibility', 'visible');
         }
     }, [mapReady, viewLevel, municipalities, onMunicipalityClick]);
 
