@@ -25,9 +25,11 @@ interface Props {
     prefectures: PrefectureData[];
     municipalities: MunicipalityData[];
     selectedRegion: string | null;
+    selectedPrefecture?: string | null;
     onRegionClick: (region: string) => void;
     onPrefectureClick: (prefecture: string) => void;
     onMunicipalityClick: (cityCode: string) => void;
+    onBack?: () => void;
 }
 
 // XSSを防止するHTMLエスケープ関数
@@ -43,9 +45,11 @@ export default function MapView({
     prefectures,
     municipalities,
     selectedRegion,
+    selectedPrefecture,
     onRegionClick,
     onPrefectureClick,
     onMunicipalityClick,
+    onBack,
 }: Props) {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<maplibregl.Map | null>(null);
@@ -239,7 +243,7 @@ export default function MapView({
             source: 'municipality-boundaries',
             paint: {
                 'line-color': '#58a6ff',
-                'line-width': 0.5,
+                'line-width': 1.5, // 太くして見やすく
                 'line-opacity': 0,
             },
         });
@@ -285,7 +289,17 @@ export default function MapView({
         const handlePrefectureClick = (e: any) => {
             if (!e.features || e.features.length === 0) return;
             const prefectureName = e.features[0].properties.nam_ja;
-            if (prefectureName) {
+            if (!prefectureName) return;
+
+            // Level 1（全国ビュー）では地方に遷移、Level 2（地方ビュー）では都道府県に遷移
+            if (viewLevel === 'national') {
+                // 全都道府県データから地方を検索
+                const pref = prefectures.find(p => p.prefecture === prefectureName);
+                if (pref && pref.region) {
+                    onRegionClick(pref.region);
+                }
+            } else {
+                // Level 2（地方ビュー）では通常通り都道府県詳細へ
                 onPrefectureClick(prefectureName);
             }
         };
@@ -351,7 +365,7 @@ export default function MapView({
             map.current.off('mouseenter', 'prefecture-fill', handlePrefectureMouseEnter);
             map.current.off('mouseleave', 'prefecture-fill', handlePrefectureMouseLeave);
         };
-    }, [mapReady, viewLevel, allPrefScores, onPrefectureClick]);
+    }, [mapReady, viewLevel, allPrefScores, prefectures, onPrefectureClick, onRegionClick]);
 
     // クリック可能なポリゴン領域の設定（自治体レイヤー）
     useEffect(() => {
@@ -483,35 +497,13 @@ export default function MapView({
         markersRef.current = [];
     };
 
-    // Level 1: 地方マーカー
+    // Level 1: 全国ビュー（マーカーなし、地方ラベルのみ）
     useEffect(() => {
         if (!mapReady || viewLevel !== 'national' || !map.current) return;
         clearMarkers();
 
         // 全国表示にズームアウト
         map.current.flyTo({ center: [137.0, 38.0], zoom: 4.5, duration: 1500 });
-
-        regions.forEach(region => {
-            const center = REGION_CENTERS[region.region];
-            if (!center) return;
-
-            // カスタムHTMLマーカー
-            const el = document.createElement('div');
-            el.className = 'region-marker';
-            el.style.background = getScoreColor(region.avg_score);
-            el.innerHTML = `
-        <div class="marker-label">${escapeHtml(region.region.replace('地方', ''))}</div>
-        <div class="marker-score">${region.avg_score}</div>
-      `;
-
-            el.addEventListener('click', () => onRegionClick(region.region));
-
-            const marker = new maplibregl.Marker({ element: el })
-                .setLngLat([center.lng, center.lat])
-                .addTo(map.current!);
-
-            markersRef.current.push(marker);
-        });
 
         // 全国ビュー: 都道府県境界とコロプレスを鮮やかに表示
         if (map.current!.getLayer('prefecture-borders')) {
@@ -617,10 +609,11 @@ export default function MapView({
             map.current!.setLayoutProperty('prefecture-labels', 'visibility', 'none');
         }
 
-        // 自治体境界を表示
+        // 自治体境界を表示（スコアで色分け）
         if (map.current!.getLayer('municipality-borders')) {
             map.current!.setLayoutProperty('municipality-borders', 'visibility', 'visible');
-            map.current!.setPaintProperty('municipality-borders', 'line-opacity', 0.6);
+            map.current!.setPaintProperty('municipality-borders', 'line-opacity', 0.9);
+            map.current!.setPaintProperty('municipality-borders', 'line-width', 2);
         }
         if (map.current!.getLayer('municipality-fill')) {
             map.current!.setLayoutProperty('municipality-fill', 'visibility', 'visible');
@@ -635,6 +628,17 @@ export default function MapView({
 
     return (
         <div ref={mapContainer} className="map-view">
+            {/* 戻るボタン */}
+            {viewLevel !== 'national' && onBack && (
+                <button
+                    className="back-button"
+                    onClick={onBack}
+                    title={viewLevel === 'region' ? '全国に戻る' : '地方に戻る'}
+                >
+                    ← {viewLevel === 'region' ? '全国' : viewLevel === 'prefecture' ? (selectedPrefecture || '地方') : '戻る'}
+                </button>
+            )}
+
             {/* 凡例 */}
             <div className="legend">
                 <div className="legend-title">DXスコア</div>
