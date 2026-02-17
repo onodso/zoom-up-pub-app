@@ -240,7 +240,8 @@ useEffect(() => {
 
 **実装完了日**: 2026-02-17
 **実装時間**: 約2時間
-**次のアクション**: 実機テスト
+**コミット**: `1832acc feat: Implement Phase 2 municipality choropleth map`
+**次のアクション**: 実機テスト（開発サーバー起動）
   - データソース候補:
     - 国土数値情報（国土交通省）: `https://nlftp.mlit.go.jp/`
     - geoshape: `https://geoshape.ex.nii.ac.jp/`
