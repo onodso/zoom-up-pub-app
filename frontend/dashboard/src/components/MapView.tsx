@@ -14,6 +14,7 @@ import type {
 import {
     getScoreColor,
     REGION_CENTERS,
+    PREFECTURE_CENTERS,
     fetchPrefectures,
 } from '../api/mapApi';
 
@@ -61,12 +62,13 @@ export default function MapView({
         if (!mapContainer.current) return;
 
         // CARTOタイルを直接定義したカスタムスタイル（認証不要）
+        // Dark Matter (No Labels) - 落ち着いた色調、大陸は目立たない
         const cartoStyle = {
             version: 8,
             sources: {
                 'carto-dark': {
                     type: 'raster',
-                    tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],
+                    tiles: ['https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png'],
                     tileSize: 256,
                     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                 }
@@ -76,15 +78,24 @@ export default function MapView({
                 type: 'raster',
                 source: 'carto-dark',
                 minzoom: 0,
-                maxzoom: 22
+                maxzoom: 22,
+                paint: {
+                    'raster-opacity': 0.85  // やや透明にして眩しさを抑える
+                }
             }]
         };
 
         map.current = new maplibregl.Map({
             container: mapContainer.current,
             style: cartoStyle as any,
-            center: [137.0, 38.0],
-            zoom: 4.5,
+            center: [138.5, 37.5],  // 日本中心（やや東寄り）
+            zoom: 4.0,  // 日本全体が見える初期表示
+            minZoom: 1.8,  // 北海道から沖縄まで完全に見えるズームレベル
+            maxZoom: 18,   // 詳細表示の最大ズーム
+            maxBounds: [
+                [115.0, 17.0],  // 南西端（沖縄南部＋十分な余裕）
+                [158.0, 52.0],  // 北東端（北方領土＋十分な余裕）
+            ],
             attributionControl: false,
         });
 
@@ -149,23 +160,23 @@ export default function MapView({
             const geo = topojson.feature(
                 topo,
                 topo.objects.japan as GeometryCollection
-            );
+            ) as GeoJSON.FeatureCollection;
 
-            // 都道府県境界レイヤー追加
+            // 都道府県境界ソース（全ての都道府県を通常表示）
             map.current!.addSource('prefecture-boundaries', {
                 type: 'geojson',
-                data: geo as GeoJSON.FeatureCollection,
+                data: geo,
             });
 
-            // 境界線（青色）
+            // 境界線（Zoom Blue）
             map.current!.addLayer({
                 id: 'prefecture-borders',
                 type: 'line',
                 source: 'prefecture-boundaries',
                 paint: {
-                    'line-color': '#58a6ff',
-                    'line-width': 1.5,
-                    'line-opacity': 0.6,
+                    'line-color': '#2D8CFF',
+                    'line-width': 2,
+                    'line-opacity': 0.7,
                 },
             });
 
@@ -180,19 +191,41 @@ export default function MapView({
                 },
             }, 'prefecture-borders'); // 境界線の下に配置
 
-            // 都道府県名ラベルレイヤー（常に表示）
+            // 都道府県の中心点GeoJSONを作成（1県1ラベル用）
+            const prefectureLabelPoints: GeoJSON.FeatureCollection = {
+                type: 'FeatureCollection',
+                features: Object.entries(PREFECTURE_CENTERS).map(([name, coords]) => ({
+                    type: 'Feature',
+                    geometry: {
+                        type: 'Point',
+                        coordinates: coords,
+                    },
+                    properties: { name },
+                })),
+            };
+
+            // 都道府県ラベル用ソースを追加
+            map.current!.addSource('prefecture-label-points', {
+                type: 'geojson',
+                data: prefectureLabelPoints,
+            });
+
+            // 都道府県名ラベルレイヤー（中心点から1つだけ表示）
             map.current!.addLayer({
                 id: 'prefecture-labels',
                 type: 'symbol',
-                source: 'prefecture-boundaries',
+                source: 'prefecture-label-points',
                 layout: {
-                    'text-field': ['get', 'nam_ja'],
+                    'text-field': ['get', 'name'],
                     'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
                     'text-size': 14,
                     'text-anchor': 'center',
                     'text-offset': [0, 0],
-                    'text-allow-overlap': false,
-                    'text-optional': true,
+                    'text-allow-overlap': false,  // ラベルの重複を許可しない
+                    'text-optional': false,       // 常に表示を試みる
+                    'symbol-avoid-edges': true,   // 画面端を避ける
+                    'text-max-width': 10,         // ラベルの最大幅（em単位）
+                    'text-padding': 2,            // ラベル周辺の余白
                     'visibility': 'none', // 初期は非表示、ビューレベルで制御
                 },
                 paint: {
@@ -254,8 +287,13 @@ export default function MapView({
                 'text-size': 12,
                 'text-anchor': 'center',
                 'text-offset': [0, 0],
-                'text-allow-overlap': false,
-                'text-optional': true,
+                'text-allow-overlap': false,      // ラベルの重複を許可しない
+                'text-optional': true,            // スペースがない場合は省略
+                'text-ignore-placement': false,   // 他のラベルとの配置を考慮
+                'symbol-avoid-edges': true,       // 画面端を避ける
+                'symbol-spacing': 200,            // 同じラベル間の最小距離（ピクセル）
+                'text-max-width': 8,              // ラベルの最大幅（em単位）
+                'text-padding': 2,                // ラベル周辺の余白
                 'visibility': 'none', // 初期は非表示、ビューレベルで制御
             },
             paint: {
@@ -439,11 +477,52 @@ export default function MapView({
         if (!mapReady || !map.current || municipalities.length === 0) return;
         if (!map.current.getLayer('municipality-fill')) return;
 
-        // 自治体のcity_codeとスコアのマッピング
-        const matchExpr: any[] = ['match', ['get', 'N03_007']];
+        // デバッグ: 自治体データとGeoJSONデータの確認
+        console.log('🔍 Municipality data sample:', municipalities.slice(0, 3).map(m => ({
+            city_name: m.city_name,
+            city_code: m.city_code,
+            total_score: m.total_score
+        })));
+
+        // GeoJSONのN03_007サンプルを確認
+        const features = municipalityGeoJson?.features?.slice(0, 3);
+        console.log('🔍 GeoJSON N03_007 sample:', features?.map((f: any) => ({
+            name: f.properties.N03_004,
+            code: f.properties.N03_007
+        })));
+
+        // 自治体のcity_codeとスコアのマッピング（重複排除）
+        const codeToColor: Map<string, string> = new Map();
+        const scoreDebug: Array<{name: string, code: string, score: number, color: string}> = [];
         municipalities.forEach(muni => {
             const score = muni.total_score || 0;
-            matchExpr.push(muni.city_code, getScoreColor(score));
+            // city_codeを5桁に正規化
+            // GeoJSONは5桁標準コード、APIは6桁（末尾にチェックディジット）
+            const normalizedCode = muni.city_code.length === 6
+                ? muni.city_code.substring(0, 5)  // 末尾1桁を削除して5桁に
+                : muni.city_code;
+
+            // 重複を排除（最初のエントリーのみ保持）
+            if (!codeToColor.has(normalizedCode)) {
+                const color = getScoreColor(score);
+                codeToColor.set(normalizedCode, color);
+                if (scoreDebug.length < 10) {
+                    scoreDebug.push({
+                        name: muni.city_name,
+                        code: normalizedCode,
+                        score,
+                        color
+                    });
+                }
+            }
+        });
+
+        console.log('📊 Score distribution (first 10):', scoreDebug);
+
+        // MapLibre用のmatch式を構築
+        const matchExpr: any[] = ['match', ['get', 'N03_007']];
+        codeToColor.forEach((color, code) => {
+            matchExpr.push(code, color);
         });
         matchExpr.push('#333333'); // デフォルト色（マッチしない場合）
 
@@ -455,7 +534,9 @@ export default function MapView({
         }
 
         console.log('✅ 自治体コロプレスマップ適用完了:', municipalities.length, '件');
-    }, [mapReady, municipalities]);
+        console.log('📊 Match expression length:', matchExpr.length, 'entries');
+        console.log('🔍 First 10 match entries:', matchExpr.slice(3, 23));
+    }, [mapReady, municipalities, municipalityGeoJson]);
 
     // マーカーをクリア
     const clearMarkers = () => {
@@ -607,26 +688,30 @@ export default function MapView({
 
             {/* 凡例 */}
             <div className="legend">
-                <div className="legend-title">DXスコア</div>
+                <div className="legend-title">DXスコア（Zoom導入適性）</div>
                 <div className="legend-item">
-                    <span className="legend-color" style={{ background: '#003f5c' }}></span>
-                    <span>80-100 先進</span>
+                    <span className="legend-color" style={{ background: '#003D82' }}></span>
+                    <span>48+ Zoom最適</span>
                 </div>
                 <div className="legend-item">
-                    <span className="legend-color" style={{ background: '#2f9e8f' }}></span>
-                    <span>65-79 進行中</span>
+                    <span className="legend-color" style={{ background: '#0E71EB' }}></span>
+                    <span>42-47 Zoom有望</span>
                 </div>
                 <div className="legend-item">
-                    <span className="legend-color" style={{ background: '#a8d08d' }}></span>
-                    <span>50-64 平均的</span>
+                    <span className="legend-color" style={{ background: '#89C4F4' }}></span>
+                    <span>34-41 平均的</span>
                 </div>
                 <div className="legend-item">
-                    <span className="legend-color" style={{ background: '#f9a03f' }}></span>
-                    <span>30-49 遅延</span>
+                    <span className="legend-color" style={{ background: '#FFB84D' }}></span>
+                    <span>22-33 要支援</span>
                 </div>
                 <div className="legend-item">
-                    <span className="legend-color" style={{ background: '#e63946' }}></span>
-                    <span>0-29 初期段階</span>
+                    <span className="legend-color" style={{ background: '#F25022' }}></span>
+                    <span>15-21 MS領域</span>
+                </div>
+                <div className="legend-item">
+                    <span className="legend-color" style={{ background: '#D13438' }}></span>
+                    <span>1-14 要改善</span>
                 </div>
             </div>
         </div>

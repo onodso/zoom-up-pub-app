@@ -50,7 +50,7 @@ async def get_region_scores(db: Session = Depends(get_db)):
             COUNT(*) as municipality_count,
             SUM(m.population) as total_population
         FROM municipalities m
-        LEFT JOIN dx_scores s ON m.city_code = s.city_code
+        LEFT JOIN dx_scores_improved s ON m.city_code = s.city_code
         WHERE m.prefecture IS NOT NULL
         GROUP BY m.prefecture
         ORDER BY m.prefecture
@@ -116,7 +116,7 @@ async def get_prefecture_scores(
             COUNT(*) as municipality_count,
             SUM(m.population) as total_population
         FROM municipalities m
-        LEFT JOIN dx_scores s ON m.city_code = s.city_code
+        LEFT JOIN dx_scores_improved s ON m.city_code = s.city_code
         WHERE m.prefecture IS NOT NULL
     """
     params = {}
@@ -174,7 +174,7 @@ async def get_municipality_scores(
             p.pattern_id,
             p.pattern_name
         FROM municipalities m
-        LEFT JOIN dx_scores s ON m.city_code = s.city_code
+        LEFT JOIN dx_scores_improved s ON m.city_code = s.city_code
         LEFT JOIN municipality_patterns p ON m.city_code = p.city_code
         WHERE m.latitude IS NOT NULL
     """
@@ -231,7 +231,7 @@ async def get_municipality_detail(city_code: str, db: Session = Depends(get_db))
             p.policy_status, p.mynumber_rate, p.online_proc_rate,
             e.computer_per_student, e.terminal_os_type, e.survey_year
         FROM municipalities m
-        LEFT JOIN dx_scores s ON m.city_code = s.city_code
+        LEFT JOIN dx_scores_improved s ON m.city_code = s.city_code
         LEFT JOIN municipality_patterns p ON m.city_code = p.city_code
         LEFT JOIN education_info e ON m.city_code = e.city_code
         WHERE m.city_code = :city_code
@@ -258,13 +258,13 @@ async def get_municipality_detail(city_code: str, db: Session = Depends(get_db))
     # 全国ランキング
     rank_result = db.execute(text("""
         SELECT COUNT(*) + 1 as rank
-        FROM dx_scores
-        WHERE total_score > (SELECT total_score FROM dx_scores WHERE city_code = :city_code)
+        FROM dx_scores_improved
+        WHERE total_score > (SELECT total_score FROM dx_scores_improved WHERE city_code = :city_code)
     """), {'city_code': city_code})
     rank_row = rank_result.fetchone()
     data['national_rank'] = rank_row._mapping['rank'] if rank_row else None
 
-    total_result = db.execute(text("SELECT COUNT(*) as total FROM dx_scores"))
+    total_result = db.execute(text("SELECT COUNT(*) as total FROM dx_scores_improved"))
     data['total_municipalities'] = total_result.fetchone()._mapping['total']
 
     # 同規模自治体の比較データ（人口±30%の自治体Top5）
@@ -273,7 +273,7 @@ async def get_municipality_detail(city_code: str, db: Session = Depends(get_db))
         comparison_result = db.execute(text("""
             SELECT m.city_name, m.population, s.total_score
             FROM municipalities m
-            JOIN dx_scores s ON m.city_code = s.city_code
+            JOIN dx_scores_improved s ON m.city_code = s.city_code
             WHERE m.population BETWEEN :pop_min AND :pop_max
               AND m.city_code != :city_code
             ORDER BY s.total_score DESC
@@ -302,7 +302,7 @@ async def get_overall_stats(db: Session = Depends(get_db)):
             ROUND(MIN(total_score), 1) as min_score,
             ROUND(MAX(total_score), 1) as max_score,
             ROUND(STDDEV(total_score), 1) as stddev_score
-        FROM dx_scores
+        FROM dx_scores_improved
     """))
     stats = dict(result.fetchone()._mapping)
 
