@@ -51,6 +51,8 @@ export default function MapView({
 
     // 全都道府県スコア（コロプレスマップ用）
     const [allPrefScores, setAllPrefScores] = useState<Record<string, number>>({});
+    // 全都道府県データ（地方情報を含む、ナビゲーション用）
+    const [allPrefecturesData, setAllPrefecturesData] = useState<PrefectureData[]>([]);
     // 自治体境界GeoJSON（コロプレスマップ用）
     const [municipalityGeoJson, setMunicipalityGeoJson] = useState<any>(null);
 
@@ -113,6 +115,7 @@ export default function MapView({
                 scores[p.prefecture] = p.avg_score;
             });
             setAllPrefScores(scores);
+            setAllPrefecturesData(allPrefs); // 全都道府県データを保存（地方情報を含む）
             console.log('✅ 全都道府県スコア取得完了:', Object.keys(scores).length, '件');
         } catch (err) {
             console.error('都道府県スコア取得エラー:', err);
@@ -272,6 +275,29 @@ export default function MapView({
         addMunicipalityBoundaryLayers();
     }, [mapReady, municipalityGeoJson]);
 
+    // デバッグ: マップ全体のクリックイベントをログ
+    useEffect(() => {
+        if (!mapReady || !map.current) return;
+
+        const handleMapClick = (e: any) => {
+            console.log('🗺️ Map clicked at:', e.lngLat, 'viewLevel:', viewLevel);
+            const features = map.current!.queryRenderedFeatures(e.point);
+            console.log('📊 Features at click point:', features.map((f: any) => ({
+                layer: f.layer.id,
+                sourceLayer: f.sourceLayer,
+                properties: f.properties
+            })));
+        };
+
+        map.current.on('click', handleMapClick);
+
+        return () => {
+            if (map.current) {
+                map.current.off('click', handleMapClick);
+            }
+        };
+    }, [mapReady, viewLevel]);
+
     // クリック可能なポリゴン領域の設定（都道府県レイヤー）
     useEffect(() => {
         if (!mapReady || !map.current) return;
@@ -279,19 +305,27 @@ export default function MapView({
 
         // 都道府県ポリゴンクリックイベント
         const handlePrefectureClick = (e: any) => {
-            if (!e.features || e.features.length === 0) return;
+            console.log('🖱️ Prefecture polygon clicked!', { viewLevel, event: e });
+            if (!e.features || e.features.length === 0) {
+                console.warn('❌ No features found in click event');
+                return;
+            }
             const prefectureName = e.features[0].properties.nam_ja;
+            console.log('📍 Prefecture name:', prefectureName);
             if (!prefectureName) return;
 
             // Level 1（全国ビュー）では地方に遷移、Level 2（地方ビュー）では都道府県に遷移
             if (viewLevel === 'national') {
                 // 全都道府県データから地方を検索
-                const pref = prefectures.find(p => p.prefecture === prefectureName);
+                const pref = allPrefecturesData.find(p => p.prefecture === prefectureName);
+                console.log('🗺️ National view - Found prefecture:', pref);
                 if (pref && pref.region) {
+                    console.log('✅ Navigating to region:', pref.region);
                     onRegionClick(pref.region);
                 }
             } else {
                 // Level 2（地方ビュー）では通常通り都道府県詳細へ
+                console.log('✅ Navigating to prefecture:', prefectureName);
                 onPrefectureClick(prefectureName);
             }
         };
@@ -325,7 +359,7 @@ export default function MapView({
             map.current.off('mouseenter', 'prefecture-fill', handlePrefectureMouseEnter);
             map.current.off('mouseleave', 'prefecture-fill', handlePrefectureMouseLeave);
         };
-    }, [mapReady, viewLevel, allPrefScores, prefectures, onPrefectureClick, onRegionClick]);
+    }, [mapReady, viewLevel, allPrefScores, allPrefecturesData, onPrefectureClick, onRegionClick]);
 
     // クリック可能なポリゴン領域の設定（自治体レイヤー）
     useEffect(() => {
@@ -334,9 +368,15 @@ export default function MapView({
 
         // 自治体ポリゴンクリックイベント
         const handleMunicipalityClick = (e: any) => {
-            if (!e.features || e.features.length === 0) return;
+            console.log('🖱️ Municipality polygon clicked!', { viewLevel, event: e });
+            if (!e.features || e.features.length === 0) {
+                console.warn('❌ No features found in click event');
+                return;
+            }
             const cityCode = e.features[0].properties.N03_007;
+            console.log('📍 City code:', cityCode);
             if (cityCode) {
+                console.log('✅ Navigating to municipality:', cityCode);
                 onMunicipalityClick(cityCode);
             }
         };
