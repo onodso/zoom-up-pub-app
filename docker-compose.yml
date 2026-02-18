@@ -1,8 +1,9 @@
 version: '3.9'
 
 services:
+  # PostgreSQL 16 (Alpine) - TimescaleDB拡張不要
   postgres:
-    image: timescale/timescaledb:latest-pg16
+    image: postgres:16-alpine
     container_name: zoom-dx-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-zoom_admin}
@@ -72,9 +73,8 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GOOGLE_SEARCH_API_KEY: ${GOOGLE_SEARCH_API_KEY}
       GOOGLE_SEARCH_ENGINE_ID: ${GOOGLE_SEARCH_ENGINE_ID}
-      OLLAMA_HOST: http://ollama:11434
       ZOOM_CHAT_WEBHOOK_URL: ${ZOOM_CHAT_WEBHOOK_URL:-}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
     volumes:
       - ./backend:/app
       - ./data:/app/data
@@ -88,28 +88,6 @@ services:
     restart: unless-stopped
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: zoom-dx-ollama
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
-    restart: unless-stopped
-
-  node-red:
-    image: nodered/node-red:latest
-    container_name: zoom-dx-nodered
-    environment:
-      - TZ=Asia/Tokyo
-    volumes:
-      - node_red_data:/data
-    ports:
-      - "1880:1880"
-    restart: unless-stopped
-
 volumes:
   postgres_data:
   redis_data:
-  ollama_data:
-  node_red_data:

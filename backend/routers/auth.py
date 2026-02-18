@@ -1,30 +1,47 @@
 """
-認証API
+認証API - DB接続方式
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
 import bcrypt
 from jose import jwt, JWTError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
-import sys
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import logging
 
-# パス設定（utilsをインポートするため）
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix='/api/auth', tags=['認証'])
 security = HTTPBearer()
 
-# 本番環境では必ず環境変数を設定してください
+# JWT設定
 JWT_SECRET = os.getenv('JWT_SECRET_KEY')
 if not JWT_SECRET:
-    # 開発用フォールバック（警告付き）
-    print("WARNING: JWT_SECRET_KEY not set. Using insecure default.")
+    logger.warning("JWT_SECRET_KEY が未設定です。開発用デフォルト値を使用します。")
     JWT_SECRET = "insecure_default_secret_key_for_dev_only_ChangeMe"
 
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRE_HOURS = int(os.getenv('JWT_EXPIRE_HOURS', '8'))
+
+
+def get_db_conn():
+    """DB接続を生成するジェネレーター"""
+    conn = psycopg2.connect(
+        host=settings.DB_HOST,
+        port=settings.DB_PORT,
+        database=settings.DB_NAME,
+        user=settings.DB_USER,
+        password=settings.DB_PASSWORD
+    )
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 class LoginRequest(BaseModel):
@@ -46,72 +63,98 @@ class UserCreate(BaseModel):
     assigned_regions: list[str] = []
 
 
-# 仮のユーザーデータ（ハッシュはbcrypt形式）
-# 初期ユーザー: Zoom123!
-MOCK_USERS = {
-    "onodso2@gmail.com": {
-        "id": 1,
-        "email": "onodso2@gmail.com",
-        # $2b$12$R9... は "Zoom123!" のハッシュ（例）
-        # 実際はスクリプトで生成されたDBの値を使うが、モック用に動的に生成も可能
-        "password_hash": b"$2b$12$8x.6p/.d/J/.x/.x/.x/.x/.x/.x/.x/.x/.x/.x/.x/.x.x", # Placeholder
-        "name": "小野寺 壮",
-        "role": "admin",
-        "assigned_regions": ["全国"]
+def _verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    パスワードをbcryptで検証する
+
+    Args:
+        plain_password: 平文パスワード
+        hashed_password: DBに保存されたbcryptハッシュ
+
+    Returns:
+        検証結果（True/False）
+    """
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode('utf-8'),
+            hashed_password.encode('utf-8')
+        )
+    except Exception as e:
+        logger.error(f"パスワード検証エラー: {e}")
+        return False
+
+
+def _create_access_token(user_data: dict) -> str:
+    """
+    JWTアクセストークンを生成する
+
+    Args:
+        user_data: ユーザー情報辞書
+
+    Returns:
+        JWTトークン文字列
+    """
+    token_data = {
+        'sub': str(user_data['id']),
+        'email': user_data['email'],
+        'role': user_data['role'],
+        'exp': datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS)
     }
-}
+    return jwt.encode(token_data, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 @router.post('/login', response_model=LoginResponse)
-async def login(request: LoginRequest):
-    """ログイン"""
-    # 簡易実装: 本来はDBから取得
-    # ここではモックユーザーではなく、DB接続を推奨したいが、
-    # まずはモックの仕組みを維持しつつ、bcrypt検証を正しく実装する。
-    # ただし、create_initial_user.py でDBにユーザーを作っているので、DBを見るべき。
-    # 今回は簡略化のため、モックユーザーのパスワードハッシュをその場で計算して比較するロジックにする（開発用）
-    
-    # DB接続ロジックを入れるのは改修が大きいので、まずはモックで動かす。
-    # ただし今回は初期ユーザー作成スクリプトと整合させる必要がある。
-    
-    # ユーザー検証（モック）
-    user = MOCK_USERS.get(request.email)
-    
-    # パスワード検証
-    is_valid = False
-    if user:
-        # モックユーザーの場合は特別に "Zoom123!" だけ通す（ハッシュ値が変わるため）
-        if request.password == "Zoom123!":
-            is_valid = True
-        else:
-            # 本来の検証
-            try:
-                # DBから取得したハッシュ（バイト列である必要がある）
-                # ここでは簡易的に都度ハッシュ化して比較...はできない（saltが違うので）
-                # 暫定対応: モックユーザーは固定パスワードのみ許可
-                pass
-            except Exception:
-                pass
+async def login(request: LoginRequest, conn=Depends(get_db_conn)):
+    """
+    ログインエンドポイント
 
-    # ※本番DB実装時は以下のようにする
-    # if user and bcrypt.checkpw(request.password.encode('utf-8'), user['password_hash'].encode('utf-8')):
-    #    is_valid = True
-    
-    if not user or not is_valid:
+    DBからユーザーを取得し、bcryptでパスワードを検証してJWTを発行する。
+    """
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        # DBからユーザー取得
+        cur.execute(
+            "SELECT id, email, password_hash, name, role, is_active FROM users WHERE email = %s",
+            (request.email,)
+        )
+        user = cur.fetchone()
+    except Exception as e:
+        logger.error(f"DB接続エラー（ログイン）: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="データベースに接続できません"
+        )
+
+    # ユーザー存在確認 + パスワード検証
+    if not user or not _verify_password(request.password, user['password_hash']):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="メールアドレスまたはパスワードが正しくありません"
         )
-    
-    # JWT生成
-    token_data = {
-        'sub': str(user['id']),
-        'email': user['email'],
-        'role': user['role'],
-        'exp': datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS)
-    }
-    access_token = jwt.encode(token_data, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    
+
+    # アカウント有効確認
+    if not user.get('is_active', True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="このアカウントは無効化されています"
+        )
+
+    # 最終ログイン時刻を更新
+    try:
+        cur.execute(
+            "UPDATE users SET last_login = NOW() WHERE id = %s",
+            (user['id'],)
+        )
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"最終ログイン時刻の更新に失敗: {e}")
+
+    # JWTトークン生成
+    access_token = _create_access_token(user)
+
+    logger.info(f"ログイン成功: {user['email']} (role: {user['role']})")
+
     return {
         'access_token': access_token,
         'token_type': 'bearer',
@@ -125,7 +168,11 @@ async def login(request: LoginRequest):
 
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """現在のユーザー取得（ミドルウェア）"""
+    """
+    現在のユーザー取得（ミドルウェア）
+
+    JWTトークンを検証してペイロードを返す。
+    """
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id = payload.get('sub')
