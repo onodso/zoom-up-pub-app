@@ -32,13 +32,6 @@ interface Props {
     onBack?: () => void;
 }
 
-// XSSを防止するHTMLエスケープ関数
-function escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
 export default function MapView({
     viewLevel,
     regions,
@@ -54,7 +47,6 @@ export default function MapView({
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<maplibregl.Map | null>(null);
     const markersRef = useRef<maplibregl.Marker[]>([]);
-    const polygonPopupRef = useRef<maplibregl.Popup | null>(null);
     const [mapReady, setMapReady] = useState(false);
 
     // 全都道府県スコア（コロプレスマップ用）
@@ -304,38 +296,12 @@ export default function MapView({
             }
         };
 
-        // ホバー時のカーソル変更とツールチップ表示
-        const handlePrefectureMouseEnter = (e: any) => {
-            if (!map.current || !e.features || e.features.length === 0) return;
-
+        // ホバー時のカーソル変更（ツールチップなし、シンプルに）
+        const handlePrefectureMouseEnter = () => {
+            if (!map.current) return;
             map.current.getCanvas().style.cursor = 'pointer';
             // ホバー時に不透明度を上げて視覚的フィードバック
             map.current.setPaintProperty('prefecture-fill', 'fill-opacity', 0.6);
-
-            // ツールチップを表示
-            const prefName = e.features[0].properties.nam_ja;
-            const score = allPrefScores[prefName];
-
-            if (prefName && score !== undefined) {
-                // 既存のポップアップがあれば削除
-                if (polygonPopupRef.current) {
-                    polygonPopupRef.current.remove();
-                }
-
-                polygonPopupRef.current = new maplibregl.Popup({
-                    closeButton: false,
-                    closeOnClick: false,
-                })
-                    .setLngLat(e.lngLat)
-                    .setHTML(`
-                        <div class="muni-popup">
-                            <strong>${escapeHtml(prefName)}</strong>
-                            <div>DXスコア: <b>${score}</b></div>
-                            <div class="popup-hint">クリックで詳細</div>
-                        </div>
-                    `)
-                    .addTo(map.current);
-            }
         };
 
         const handlePrefectureMouseLeave = () => {
@@ -344,12 +310,6 @@ export default function MapView({
                 // 元の不透明度に戻す（ビューレベルに応じて調整）
                 const baseOpacity = viewLevel === 'national' ? 0.35 : viewLevel === 'region' ? 0.45 : 0.1;
                 map.current.setPaintProperty('prefecture-fill', 'fill-opacity', baseOpacity);
-
-                // ツールチップを削除
-                if (polygonPopupRef.current) {
-                    polygonPopupRef.current.remove();
-                    polygonPopupRef.current = null;
-                }
             }
         };
 
@@ -381,40 +341,12 @@ export default function MapView({
             }
         };
 
-        // ホバー時のカーソル変更とツールチップ表示
-        const handleMunicipalityMouseEnter = (e: any) => {
-            if (!map.current || !e.features || e.features.length === 0) return;
-
+        // ホバー時のカーソル変更（ツールチップなし、シンプルに）
+        const handleMunicipalityMouseEnter = () => {
+            if (!map.current) return;
             map.current.getCanvas().style.cursor = 'pointer';
             // ホバー時に不透明度を上げて視覚的フィードバック
             map.current.setPaintProperty('municipality-fill', 'fill-opacity', 0.7);
-
-            // ツールチップを表示
-            const cityCode = e.features[0].properties.N03_007;
-            const cityName = e.features[0].properties.N03_004 || e.features[0].properties.N03_003;
-            const muni = municipalities.find(m => m.city_code === cityCode);
-
-            if (muni) {
-                // 既存のポップアップがあれば削除
-                if (polygonPopupRef.current) {
-                    polygonPopupRef.current.remove();
-                }
-
-                polygonPopupRef.current = new maplibregl.Popup({
-                    closeButton: false,
-                    closeOnClick: false,
-                })
-                    .setLngLat(e.lngLat)
-                    .setHTML(`
-                        <div class="muni-popup">
-                            <strong>${escapeHtml(muni.city_name || cityName)}</strong>
-                            <div>スコア: <b>${muni.total_score}</b></div>
-                            <div>人口: ${(muni.population || 0).toLocaleString()}</div>
-                            <div class="popup-hint">クリックで詳細</div>
-                        </div>
-                    `)
-                    .addTo(map.current);
-            }
         };
 
         const handleMunicipalityMouseLeave = () => {
@@ -422,12 +354,6 @@ export default function MapView({
                 map.current.getCanvas().style.cursor = '';
                 // 元の不透明度に戻す
                 map.current.setPaintProperty('municipality-fill', 'fill-opacity', 0.5);
-
-                // ツールチップを削除
-                if (polygonPopupRef.current) {
-                    polygonPopupRef.current.remove();
-                    polygonPopupRef.current = null;
-                }
             }
         };
 
