@@ -41,8 +41,8 @@ VITE_API_BASE=
 ENVFILE
 
     echo "🐳 Building and starting Docker containers..."
-    docker compose -f docker-compose.aws.yml build frontend
-    docker compose -f docker-compose.aws.yml up -d frontend
+    docker compose -f docker-compose.aws.yml build
+    docker compose -f docker-compose.aws.yml up -d
 
     echo "🧹 Cleaning up old images..."
     docker image prune -f

@@ -1,32 +1,31 @@
-version: '3.9'
-
-# AWS Lightsail専用構成
-# 役割: Frontend + Thin API (プロキシ)
-# Database/AI: Lenovo Tinyへ委譲
-
 services:
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: zoom-dx-frontend
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       - NODE_ENV=production
-      # Cloudflare Tunnel経由でLenovo TinyのAPIへ接続
-      - NEXT_PUBLIC_API_URL=https://api.your-domain.com
-      - API_URL=https://api.your-domain.com
+      # ブラウザからは同一オリジンの相対パスでアクセスし、Caddyがリバースプロキシする
+      - VITE_API_BASE=
     restart: unless-stopped
 
-  # Thin API: 認証とプロキシのみ（将来実装）
-  # api-proxy:
-  #   build:
-  #     context: ./api-proxy
-  #     dockerfile: Dockerfile
-  #   container_name: zoom-dx-api-proxy
-  #   ports:
-  #     - "8000:8000"
-  #   environment:
-  #     BACKEND_API_URL: https://api.your-domain.com
-  #   restart: unless-stopped
+  caddy:
+    image: caddy:2-alpine
+    container_name: zoom-dx-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+
+volumes:
+  caddy_data:
+  caddy_config:
