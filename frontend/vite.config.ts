@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    allowedHosts: ['54-150-207-122.nip.io'],
     // バックエンドAPIへのプロキシ設定
     proxy: {
       '/api': {
