@@ -16,7 +16,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "0.0.0.0:5432:5432"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zoom_admin}"]
@@ -31,7 +31,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "0.0.0.0:6379:6379"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -74,7 +74,7 @@ services:
       - ./backend:/app
       - ./data:/app/data
     ports:
-      - "8000:8000"
+      - "0.0.0.0:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,7 +91,7 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     ports:
-      - "11434:11434"
+      - "0.0.0.0:11434:11434"
     restart: unless-stopped
     # Ollamaはメモリを多く使うため、制限を設定（オプション）
     deploy:
@@ -109,7 +109,7 @@ services:
     volumes:
       - node_red_data:/data
     ports:
-      - "1880:1880"
+      - "0.0.0.0:1880:1880"
     restart: unless-stopped
     depends_on:
       - api

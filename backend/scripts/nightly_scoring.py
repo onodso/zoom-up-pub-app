@@ -41,7 +41,7 @@ def main():
         cur = conn.cursor()
         
         # 1. Select Target Cities (Limit 10 for testing)
-        cur.execute("SELECT city_code, city_name, mayor_speech_url FROM municipalities LIMIT 10")
+        cur.execute("SELECT city_code, city_name, official_url FROM municipalities LIMIT 10")
         targets = cur.fetchall()
         
         print(f"🎯 Processing {len(targets)} municipalities...")

@@ -21,11 +21,7 @@ const Login: React.FC = () => {
         setIsSubmitting(true);
 
         try {
-            const formData = new FormData();
-            formData.append('username', email); // OAuth2PasswordRequestForm expects username
-            formData.append('password', password);
-
-            await login(formData);
+            await login({ email, password });
             navigate(from, { replace: true });
         } catch (err: any) {
             console.error('Login failed', err);

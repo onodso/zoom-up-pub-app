@@ -11,7 +11,7 @@ interface User {
 interface AuthContextType {
     user: User | null;
     loading: boolean;
-    login: (formData: FormData) => Promise<void>;
+    login: (data: { email: string; password: string }) => Promise<void>;
     logout: () => Promise<void>;
 }
 
@@ -38,19 +38,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    const login = async (formData: FormData) => {
-        // FastAPI expects form data for OAuth2PasswordRequestForm
-        await api.post('/auth/login', formData, {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        });
+    const login = async (data: { email: string; password: string }) => {
+        const response = await api.post('/auth/login', data);
+        if (response.data.access_token) {
+            localStorage.setItem('token', response.data.access_token);
+        }
         await checkAuth();
     };
 
     const logout = async () => {
-        // サーバーサイドでのクッキー削除などが理想だが、現状はクライアント側で状態クリア
-        // 必要に応じて /auth/logout エンドポイントを作成する
+        localStorage.removeItem('token');
         setUser(null);
-        // 簡易的にページリロードしてクリーンアップ
         window.location.href = '/login';
     };
 

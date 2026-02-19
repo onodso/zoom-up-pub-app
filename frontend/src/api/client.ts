@@ -3,7 +3,7 @@ import axios from 'axios';
 // APIクライアントの作成
 // VITE_API_URL環境変数があればそれを使い、なければプロキシ設定に従う（相対パス）
 // Viteの開発サーバープロキシ設定で /api へのリクエストをバックエンドへ転送することを想定
-const baseURL = import.meta.env.VITE_API_URL || '/api/v1';
+const baseURL = import.meta.env.VITE_API_URL || '/api';
 
 export const api = axios.create({
     baseURL,
@@ -11,6 +11,15 @@ export const api = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
+});
+
+// リクエストインターセプター：トークン自動付与
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
 });
 
 // レスポンスインターセプター（任意）

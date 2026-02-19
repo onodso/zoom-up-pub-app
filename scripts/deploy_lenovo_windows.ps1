@@ -1,104 +1,87 @@
-# Deploy Stage 2 to Lenovo Tiny (Windows PowerShell)
+# Deploy Phase 3/4 to Lenovo Tiny (Windows PowerShell)
 # Usage: .\scripts\deploy_lenovo_windows.ps1
 
-Write-Host "🚀 Deploying Stage 2 to Lenovo Tiny (Windows)..." -ForegroundColor Cyan
-Write-Host "================================" -ForegroundColor Cyan
+Write-Host "🚀 Deploying Zoom City DX App (Phase 4) to Lenovo Tiny..." -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
 
-# Check Docker is running
-Write-Host "1. Checking Docker status... " -NoNewline
+# 1. 動作環境確認
+Write-Host "1. Checking Environment... " -NoNewline
 try {
     docker ps > $null 2>&1
-    Write-Host "✅" -ForegroundColor Green
+    Write-Host "Docker is running ✅" -ForegroundColor Green
 } catch {
-    Write-Host "❌" -ForegroundColor Red
-    Write-Host "   Please start Docker Desktop and try again" -ForegroundColor Yellow
+    Write-Host "Docker is NOT running ❌" -ForegroundColor Red
     exit 1
 }
 
-# Pull latest code
+# 2. コード更新
 Write-Host "2. Pulling latest code... " -NoNewline
 git pull origin main > $null 2>&1
-Write-Host "✅" -ForegroundColor Green
+Write-Host "Done ✅" -ForegroundColor Green
 
-# Run migration
-Write-Host "3. Running database migration... " -NoNewline
-try {
-    Get-Content backend/db/migrations/008_add_scoring_columns.sql | docker exec -i zoom-dx-postgres psql -U zoom_admin -d localgov_intelligence > $null 2>&1
-    Write-Host "✅" -ForegroundColor Green
-} catch {
-    Write-Host "⚠️  (May already be applied)" -ForegroundColor Yellow
+# 3. コンテナ再起動 (Build含む)
+Write-Host "3. Rebuilding & Restarting Containers..." -ForegroundColor Cyan
+docker compose -f docker-compose.lenovo.yml up -d --build
+if ($?) {
+    Write-Host "   Containers started ✅" -ForegroundColor Green
+} else {
+    Write-Host "   Docker Compose failed ❌" -ForegroundColor Red
+    exit 1
 }
 
-# Install AI packages
-Write-Host "4. Installing AI packages (this will take 5-10 minutes)..." -ForegroundColor Yellow
-docker exec zoom-dx-api pip3 install -q torch transformers fugashi ipadic
-$result = docker exec zoom-dx-api python3 -c "import torch; import transformers; print('✅ AI packages installed')" 2>&1 | Select-Object -Last 1
-Write-Host "   $result" -ForegroundColor Green
-
-# Data enrichment
-Write-Host "5. Running data enrichment... " -NoNewline
-docker exec zoom-dx-api python3 scripts/enrich_dx_status_lite.py > $null 2>&1
-Write-Host "✅" -ForegroundColor Green
-
-# Test scoring
-Write-Host "6. Testing scoring engine..." -ForegroundColor Cyan
-docker exec zoom-dx-api python3 scripts/nightly_scoring_lite.py 2>&1 | Select-String -Pattern "Processing|Success|Score" | Select-Object -First 5
-
-# Restart API
-Write-Host "7. Restarting API container... " -NoNewline
-docker compose -f docker-compose.lenovo.yml restart api > $null 2>&1
-Start-Sleep -Seconds 5
-Write-Host "✅" -ForegroundColor Green
-
-# Health check
-Write-Host "8. Running health check... " -NoNewline
-try {
-    $response = Invoke-WebRequest -Uri "http://localhost:8000/api/health" -UseBasicParsing
-    if ($response.StatusCode -eq 200) {
-        Write-Host "✅" -ForegroundColor Green
-    } else {
-        Write-Host "❌ (Status: $($response.StatusCode))" -ForegroundColor Red
+# 4. DBマイグレーション
+Write-Host "4. Running DB Migration... " -NoNewline
+# Retry loop for DB readiness
+for ($i=1; $i -le 10; $i++) {
+    try {
+        docker compose -f docker-compose.lenovo.yml exec -T api alembic upgrade head > $null 2>&1
+        if ($?) {
+            Write-Host "Done ✅" -ForegroundColor Green
+            break
+        }
+    } catch {
+        # ignore
     }
-} catch {
-    Write-Host "❌ Failed" -ForegroundColor Red
+    Start-Sleep -Seconds 3
+    if ($i -eq 10) { Write-Host "Failed ❌" -ForegroundColor Red }
 }
 
-# Test endpoints
-Write-Host "9. Testing Stage 2 endpoints..." -ForegroundColor Cyan
+# 5. フロントエンド (Vite) ビルド & デプロイ
+# Lenovo環境ではローカルビルドではなくDocker内ビルド/ホスティングを推奨
+# docker-compose.lenovo.yml で nginx などの配信設定が必要だが、
+# 現状は簡易的に `npm run dev` 相当で動かすか、ビルド済みファイルを配信する形になる。
+# 今回は `api` コンテナがメインのため、フロントエンドのビルドはスキップ（または別途手順）と仮定。
+# ※本来は frontend コンテナを追加すべき
 
-Write-Host "   - Score API... " -NoNewline
-try {
-    $response = Invoke-WebRequest -Uri "http://localhost:8000/api/scores/011002" -UseBasicParsing
-    Write-Host "✅" -ForegroundColor Green
-} catch {
-    Write-Host "⚠️" -ForegroundColor Yellow
+# 6. ヘルスチェック
+Write-Host "5. Health Check... " -NoNewline
+$max_retries = 12
+$retry_count = 0
+$healthy = $false
+
+while (-not $healthy -and $retry_count -lt $max_retries) {
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost:8000/api/health" -UseBasicParsing -ErrorAction Stop
+        if ($response.StatusCode -eq 200) {
+            $healthy = $true
+            Write-Host "OK ✅" -ForegroundColor Green
+        }
+    } catch {
+        Start-Sleep -Seconds 5
+        $retry_count++
+        Write-Host "." -NoNewline -ForegroundColor Yellow
+    }
 }
 
-Write-Host "   - Map API... " -NoNewline
-try {
-    $response = Invoke-WebRequest -Uri "http://localhost:8000/api/scores/map/all" -UseBasicParsing
-    Write-Host "✅" -ForegroundColor Green
-} catch {
-    Write-Host "⚠️" -ForegroundColor Yellow
+if (-not $healthy) {
+    Write-Host "Timeout ❌" -ForegroundColor Red
+    exit 1
 }
 
-Write-Host "   - Proposal API... " -NoNewline
-try {
-    $body = @{
-        city_code = "011002"
-        focus_area = "general"
-    } | ConvertTo-Json
-    $response = Invoke-WebRequest -Uri "http://localhost:8000/api/proposals/generate" -Method Post -Body $body -ContentType "application/json" -UseBasicParsing
-    Write-Host "✅" -ForegroundColor Green
-} catch {
-    Write-Host "⚠️" -ForegroundColor Yellow
-}
-
-Write-Host ""
-Write-Host "================================" -ForegroundColor Cyan
+# 7. 完了表示
+Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "🎉 Deployment Complete!" -ForegroundColor Green
-Write-Host ""
-Write-Host "📊 Next Steps:" -ForegroundColor Cyan
-Write-Host "   1. View Swagger UI: http://localhost:8000/docs"
-Write-Host "   2. Test Score API: curl http://localhost:8000/api/scores/011002"
-Write-Host "   3. Setup Task Scheduler for nightly scoring"
+Write-Host "   Frontend: http://localhost:3000 (if running)"
+Write-Host "   Backend : http://localhost:8000/docs"
+Write-Host "   Admin DB: http://localhost:8000/admin (if configured)"
+

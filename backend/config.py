@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     # e-Stat API
     ESTAT_APP_ID: str = os.getenv("ESTAT_APP_ID", "")
     
+    # Google API
+    GOOGLE_SEARCH_API_KEY: str = Field(default="", validation_alias="GOOGLE_SEARCH_API_KEY")
+    GOOGLE_SEARCH_ENGINE_ID: str = Field(default="", validation_alias="GOOGLE_SEARCH_ENGINE_ID")
+    
     # Paths
     DATA_DIR: str = os.getenv("DATA_DIR", "./data")
 

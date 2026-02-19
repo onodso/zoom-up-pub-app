@@ -1,29 +1,46 @@
 #!/bin/bash
-# Setup Cron Job on Lenovo Tiny for nightly scoring
-# Usage: Run this script on Lenovo Tiny directly
 
-echo "⏰ Setting up Cron Job for Nightly Scoring..."
+# scripts/setup_cron_lenovo.sh
+# Lenovo Tiny (WSL2) 用の定期実行設定スクリプト
 
-# Create log directory
-sudo mkdir -p /opt/zoom-dx/logs
-sudo chown -R $(whoami):$(whoami) /opt/zoom-dx/logs
+LOG_DIR="/var/log/zoom-dx"
+PROJECT_DIR=$(pwd)
+CRON_FILE="zoom-dx-cron"
 
-# Backup existing crontab
-crontab -l > /tmp/crontab_backup_$(date +%Y%m%d) 2>/dev/null || true
+echo "⏰ Setting up Nightly Scoring Cron Job..."
 
-# Add new cron job (if not exists)
-(crontab -l 2>/dev/null | grep -v "nightly_scoring"; echo "0 3 * * * docker exec zoom-dx-api python3 /app/scripts/nightly_scoring.py >> /opt/zoom-dx/logs/scoring.log 2>&1") | crontab -
+# 1. ログディレクトリ作成
+if [ ! -d "$LOG_DIR" ]; then
+    echo "Creating log directory: $LOG_DIR"
+    sudo mkdir -p $LOG_DIR
+    sudo chown $(whoami):$(whoami) $LOG_DIR
+fi
 
-echo "✅ Cron job configured:"
-echo "   - Schedule: Every day at 3:00 AM (JST)"
-echo "   - Command: docker exec zoom-dx-api python3 /app/scripts/nightly_scoring.py"
-echo "   - Log: /opt/zoom-dx/logs/scoring.log"
-echo ""
+# 2. Cronファイル作成
+# 毎日 AM 3:00 に実行
+# Dockerコンテナ内で実行するため、docker execを使用
+echo "Creating cron entry..."
+cat > $CRON_FILE <<EOF
+# Zoom City DX Nightly Scoring (Daily at 03:00 JST)
+0 3 * * * cd $PROJECT_DIR && docker compose -f docker-compose.lenovo.yml exec -T api python3 scripts/nightly_scoring.py >> $LOG_DIR/nightly_scoring.log 2>&1
+EOF
 
-# Display current crontab
-echo "📋 Current crontab:"
-crontab -l | grep -v "^#"
+# 3. Crontabへの登録
+if crontab -l | grep -q "Zoom City DX Nightly Scoring"; then
+    echo "⚠️  Cron job already exists. Skipping."
+else
+    # 既存のcrontabをバックアップして追記
+    crontab -l > mycron.backup 2>/dev/null
+    cat $CRON_FILE >> mycron.backup
+    crontab mycron.backup
+    rm mycron.backup
+    echo "✅ Cron job registered."
+fi
 
-echo ""
-echo "🧪 Test run (dry run):"
-echo "   docker exec zoom-dx-api python3 /app/scripts/nightly_scoring.py"
+rm $CRON_FILE
+
+echo "=================================================="
+echo "Current Crontab:"
+crontab -l
+echo "=================================================="
+echo "🎉 Setup Complete. Logs will be at: $LOG_DIR/nightly_scoring.log"
