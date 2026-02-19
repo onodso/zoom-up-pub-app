@@ -106,8 +106,13 @@ class ImprovedScoreCalculator:
         """実施/未実施を1.0/0.0に変換"""
         if not value:
             return 0.0
+        value_str = str(value)
+        # 否定キーワードを先にチェック（部分一致の誤判定防止）
+        negative_keywords = ['未実施', '未導入', '未活用', '未策定', '未任命', 'なし', '検討中']
+        if any(kw in value_str for kw in negative_keywords):
+            return 0.0
         positive_keywords = ['実施', '導入済', '活用中', '策定済', '任命済', 'あり']
-        return 1.0 if any(kw in str(value) for kw in positive_keywords) else 0.0
+        return 1.0 if any(kw in value_str for kw in positive_keywords) else 0.0
 
     def coverage_penalty(self, denominator: int, max_denominator: int = 32) -> float:
         """
