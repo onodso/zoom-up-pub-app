@@ -34,7 +34,8 @@ ssh -i $KEY $HOST << 'EOF'
     # We will inject VITE_API_BASE into the frontend container.
     
     echo "⚙️ Creating environment file for frontend..."
-    cat <<ENVFILE > frontend/.env.local
+    rm -f frontend/.env.local frontend/.env.production
+    cat <<ENVFILE > frontend/.env.production
 # AWS環境ではCaddyの同一オリジンへの相対パスを使用するため空にする
 VITE_API_BASE=
 ENVFILE
