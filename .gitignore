@@ -33,6 +33,9 @@ Thumbs.db
 # Logs
 *.log
 logs/
+logs*.txt
+header_dump.txt
+exec.log
 
 # Database
 *.db
@@ -46,3 +49,13 @@ backups/
 
 # Secrets
 config/secrets/
+
+# 大容量データファイル
+*.zip
+*.csv.gz
+data/jageocoder_db/
+data/gbizinfo/
+
+# バックエンドのダンプ・一時ファイル
+backend/*.csv
+backend/*.zip
