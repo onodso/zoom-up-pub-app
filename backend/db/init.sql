@@ -4,16 +4,18 @@
 -- 自治体マスタ
 CREATE TABLE municipalities (
     id SERIAL PRIMARY KEY,
-    code VARCHAR(6) UNIQUE NOT NULL,
+    city_code VARCHAR(6) UNIQUE NOT NULL,
     prefecture VARCHAR(10) NOT NULL,
-    name VARCHAR(50) NOT NULL,
+    city_name VARCHAR(50) NOT NULL,
     region VARCHAR(10) NOT NULL,  -- 北海道/東北/関東/中部/近畿/中国/四国/九州
     population INTEGER DEFAULT 0,
     households INTEGER DEFAULT 0,
     mayor_name VARCHAR(50),
     official_url TEXT,
-    contact_phone VARCHAR(20),
     contact_email VARCHAR(100),
+    latitude DECIMAL(9,6),
+    longitude DECIMAL(9,6),
+    dx_status JSONB,
     score_total DECIMAL(5,2) DEFAULT 0.0,  -- 最新スコア（キャッシュ）
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
@@ -22,6 +24,33 @@ CREATE TABLE municipalities (
 CREATE INDEX idx_municipalities_region ON municipalities(region);
 CREATE INDEX idx_municipalities_prefecture ON municipalities(prefecture);
 CREATE INDEX idx_municipalities_score ON municipalities(score_total DESC);
+
+-- 自治体類型パターン
+CREATE TABLE municipality_patterns (
+    id SERIAL PRIMARY KEY,
+    city_code VARCHAR(6) REFERENCES municipalities(city_code) ON DELETE CASCADE,
+    pattern_id INTEGER,
+    pattern_name VARCHAR(50),
+    confidence_score DECIMAL(3,2),
+    policy_status TEXT,
+    mynumber_rate DECIMAL(5,2),
+    online_proc_rate DECIMAL(5,2),
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(city_code)
+);
+CREATE INDEX idx_patterns_city ON municipality_patterns(city_code);
+
+-- 教育GIGAスクール情報
+CREATE TABLE education_info (
+    id SERIAL PRIMARY KEY,
+    city_code VARCHAR(6) REFERENCES municipalities(city_code) ON DELETE CASCADE,
+    computer_per_student DECIMAL(4,2),
+    terminal_os_type VARCHAR(50),
+    survey_year INTEGER,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(city_code)
+);
+CREATE INDEX idx_education_city ON education_info(city_code);
 
 -- スコアテーブル
 CREATE TABLE scores (

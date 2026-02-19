@@ -200,6 +200,10 @@ class ImprovedScoreCalculator:
             raw_scores.append(raw_score)
 
         raw_scores = np.array(raw_scores)
+        if len(raw_scores) == 0:
+            self._cat2_stats = {'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0}
+            return self._cat2_stats
+
         self._cat2_stats = {
             'mean': np.mean(raw_scores),
             'std': np.std(raw_scores),
@@ -259,6 +263,10 @@ class ImprovedScoreCalculator:
             raw_scores.append(raw_score)
 
         raw_scores = np.array(raw_scores)
+        if len(raw_scores) == 0:
+            self._cat3_stats = {'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0}
+            return self._cat3_stats
+
         self._cat3_stats = {
             'mean': np.mean(raw_scores),
             'std': np.std(raw_scores),
