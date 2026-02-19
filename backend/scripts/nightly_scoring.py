@@ -9,8 +9,15 @@ from typing import List
 sys.path.append(str(Path(__file__).parent.parent))  # Add /app to path
 from config import settings
 from engines.decision_readiness_scorer import DecisionReadinessScorerV3
-from engines.bert_classifier import BertCommitmentClassifier
 from engines.ollama_analyzer import OllamaAnalyzer
+
+# BERTはオプショナル（torch/transformersが未インストールの場合はスキップ）
+try:
+    from engines.bert_classifier import BertCommitmentClassifier
+    BERT_AVAILABLE = True
+except ImportError:
+    BERT_AVAILABLE = False
+    print("⚠️ BERT分類器は利用不可（torch/transformersが未インストール）。Ollamaのみで動作します。")
 
 def main():
     print("🌙 Starting Nightly Scoring Batch...")
@@ -26,8 +33,8 @@ def main():
     # Initialize Engines
     scorer = DecisionReadinessScorerV3(conn)
     
-    # Initialize Text Engines
-    bert = BertCommitmentClassifier()
+    # テキスト分析エンジンの初期化
+    bert = BertCommitmentClassifier() if BERT_AVAILABLE else None
     ollama = OllamaAnalyzer()
     
     try:
@@ -54,12 +61,13 @@ def main():
             }
             
             if combined_text:
-                # BERT
-                try:
-                    bert_res = bert.predict_commitment(combined_text[:512]) # Truncate for BERT
-                    analysis_result["bert_score"] = bert_res.get("score", 0)
-                except Exception as e:
-                    print(f"     ⚠️ BERT Failed: {e}")
+                # BERT（利用可能な場合のみ）
+                if bert:
+                    try:
+                        bert_res = bert.predict_commitment(combined_text[:512])
+                        analysis_result["bert_score"] = bert_res.get("score", 0)
+                    except Exception as e:
+                        print(f"     ⚠️ BERT Failed: {e}")
                     
                 # Ollama
                 try:
