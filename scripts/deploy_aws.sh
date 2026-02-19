@@ -35,8 +35,8 @@ ssh -i $KEY $HOST << 'EOF'
     
     echo "⚙️ Creating environment file for frontend..."
     cat <<ENVFILE > frontend/.env.local
-# Point to Lenovo Tiny via Tailscale (or public IP if applicable)
-VITE_API_BASE=http://100.107.246.40:8000
+# AWS環境ではCaddyの同一オリジンへの相対パスを使用するため空にする
+VITE_API_BASE=
 ENVFILE
 
     echo "🐳 Building and starting Docker containers..."

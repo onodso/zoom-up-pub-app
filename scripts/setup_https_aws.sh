@@ -30,8 +30,8 @@ services:
       - "3000"
     environment:
       - NODE_ENV=production
-      # ブラウザからは同一オリジンのCaddy（/api）を叩く
-      - VITE_API_BASE=/api
+      # ブラウザからは同一オリジンの相対パスでアクセスし、Caddyがリバースプロキシする
+      - VITE_API_BASE=
     restart: unless-stopped
 
   caddy:
