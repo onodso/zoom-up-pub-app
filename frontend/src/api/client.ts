@@ -3,7 +3,7 @@ import axios from 'axios';
 // APIクライアントの作成
 // VITE_API_URL環境変数があればそれを使い、なければプロキシ設定に従う（相対パス）
 // Viteの開発サーバープロキシ設定で /api へのリクエストをバックエンドへ転送することを想定
-const baseURL = import.meta.env.VITE_API_URL || '/api';
+const baseURL = import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || '';
 
 export const api = axios.create({
     baseURL,
