@@ -1,7 +1,7 @@
 // APIクライアント - バックエンドのMap Data APIとの通信
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || '';
 
 const api = axios.create({
     baseURL: API_BASE,
@@ -152,7 +152,7 @@ export function getScoreColor(score: number): string {
     if (score >= 28) return '#FFB84D';   // アンバー - やや課題
     if (score >= 22) return '#FF8A65';   // オレンジ - 課題あり
     if (score >= 15) return '#F25022';   // Microsoft Red - MS領域
-    if (score > 0)  return '#D13438';    // 濃い赤 - 要改善
+    if (score > 0) return '#D13438';    // 濃い赤 - 要改善
     return '#9CA3AF';                    // グレー - データなし
 }
 
